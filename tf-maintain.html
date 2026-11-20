@@ -16,6 +16,10 @@
   else if(v === 'dash') c = 'v-dash';
   else if(framed && !v) c = 'v-connector';
   document.documentElement.className = c;
+  /* theme from the connector (?th=) applied before paint; color-scheme must
+     match Trello's or Chrome paints an opaque white canvas behind the face */
+  var th = null; try{ th = new URLSearchParams(location.search).get('th'); }catch(e){}
+  if(th === 'light' || th === 'dark'){ document.documentElement.setAttribute('data-color-mode', th); document.documentElement.style.colorScheme = th; }
 })();
 </script>
 <script src="https://p.trellocdn.com/power-up.min.js"></script>
@@ -26,6 +30,7 @@
     --line:#46474b; --text:#cecfd2; --dim:#96999e; --dimmer:#85878c;
     --head:#e2e3e5; --blue:#579dff; --blue-bg:rgba(87,157,255,.15);
     --amber:#f5cd47; --amber-bg:rgba(245,205,71,.13);
+    color-scheme:dark;
   }
   [data-color-mode="light"]{
     --bg:#f1f2f4; --panel:#ffffff; --field:#ffffff;
@@ -33,6 +38,7 @@
     --line:#d5d7db; --text:#33373c; --dim:#6b6f76; --dimmer:#84878d;
     --head:#1d2125; --blue:#0c66e4; --blue-bg:rgba(12,102,228,.10);
     --amber:#946f00; --amber-bg:rgba(245,205,71,.25);
+    color-scheme:light;
   }
   [data-color-mode="light"] .v-summary, [data-color-mode="light"].v-summary{ --panel:#f1f2f4 }
   *{box-sizing:border-box}
@@ -243,7 +249,7 @@
    - standalone : file opened directly -> editor with browser-local storage.
 ============================================================================ */
 var SELF = location.origin + location.pathname;
-var VERSION = '0.2';
+var VERSION = '0.3';
 var CONFIG = {
   /* Trello API key from trello.com/power-ups/admin -> TF-Maintain -> API key.
      Empty = no REST: issue comments and history archives stay queued on the
@@ -1230,7 +1236,8 @@ function initConnector(){
         if(m) flushQueue(t, m, qh);
         /* deterministic URL: identical data -> identical URL (no cache-buster) */
         var d = JSON.stringify({m:m, q:qh, n:memberTagFrom(r && r.m) || ''});
-        var url = SELF + '?view=summary&d=' + encodeURIComponent(d);
+        var th = ''; try{ var cx = t.getContext(); if(cx && (cx.theme === 'light' || cx.theme === 'dark')) th = cx.theme; }catch(e){}
+        var url = SELF + '?view=summary' + (th ? '&th=' + th : '') + '&d=' + encodeURIComponent(d);
         return {
           title: 'TF-Maintain v' + VERSION,
           icon: TRELLO_ICON,
@@ -1248,11 +1255,14 @@ function initConnector(){
 
 /* ===================== theme, member, boot ===================== */
 function applyTheme(t){
-  var th = null;
-  try{ var c = t && t.getContext && t.getContext(); if(c && (c.theme === 'dark' || c.theme === 'light')) th = c.theme; }catch(e){}
+  var th = null, p = getParam('th');
+  if(_view === 'summary' && (p === 'light' || p === 'dark')) th = p;   // connector's theme wins on the face
+  if(!th){ try{ var c = t && t.getContext && t.getContext(); if(c && (c.theme === 'dark' || c.theme === 'light')) th = c.theme; }catch(e){} }
   if(!th){ var a = document.documentElement.getAttribute('data-color-mode'); if(a === 'dark' || a === 'light') th = a; }
   if(!th && !t){ try{ th = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }catch(e){} }
-  document.documentElement.setAttribute('data-color-mode', th || 'dark');
+  th = th || 'dark';
+  document.documentElement.setAttribute('data-color-mode', th);
+  document.documentElement.style.colorScheme = th;
 }
 function memberTagFrom(m){
   var n = ((m && (m.fullName || m.username)) || '').trim();

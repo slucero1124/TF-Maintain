@@ -199,7 +199,7 @@ const server = http.createServer((req, res) => {
     {i:'b', n:'Clean build plates', ev:'1w', w:3, ap:'u', lu:{'X1C #1':'2026-11-19'}, c:'2026-11-20', ow:'Technician'},
     {i:'c', n:'Probe calibration', ev:'3m', w:5, ld:'2026-11-19'}
   ], h:[], fl:[], q:[] };
-  const faceUrl = m => BASE + '/' + FILE + '?view=summary&d=' + encodeURIComponent(JSON.stringify({m:m, q:0, n:'Steven L.'}));
+  const faceUrl = m => BASE + '/' + FILE + '?view=summary&th=dark&d=' + encodeURIComponent(JSON.stringify({m:m, q:0, n:'Steven L.'}));
   const hp = await ctx.newPage(); hp.on('pageerror', e => errors.push('harness: ' + e.message));
   await hp.goto(BASE + '/harness.html');
   const mount = async (src) => {
@@ -209,6 +209,8 @@ const server = http.createServer((req, res) => {
   };
   let fr = await mount(faceUrl(MNT));
   ok(!(await fr.isVisible('#app')), 'face never shows editor markup');
+  const fth = await fr.evaluate(() => ({mode: document.documentElement.getAttribute('data-color-mode'), cs: getComputedStyle(document.documentElement).colorScheme, bg: getComputedStyle(document.documentElement).backgroundColor, bbg: getComputedStyle(document.body).backgroundColor}));
+  ok(fth.mode === 'dark' && fth.cs === 'dark' && fth.bg === 'rgba(0, 0, 0, 0)' && fth.bbg === 'rgba(0, 0, 0, 0)', 'face: dark theme, dark color-scheme, transparent background', fth);
   const g = await fr.$$eval('.sv-g', x => x.map(e => e.textContent));
   ok(JSON.stringify(g) === '["Overdue","Due now"]', 'groups: Overdue then Due now', g);
   ok(await fr.isVisible('text=1 upcoming'), 'upcoming summarized in one line');
@@ -251,6 +253,7 @@ const server = http.createServer((req, res) => {
   ok(['card-badges','card-back-section','board-buttons'].every(c => caps.indexOf(c) >= 0), 'capabilities registered', caps);
   const cb = await hp.evaluate(async () => { var t = window.__capT; var a = await window.__caps['card-back-section'](t); var b = await window.__caps['card-back-section'](t); var bd = await window.__caps['card-badges'](t); var bb = window.__caps['board-buttons'](t); return {a:a.url||a.content.url, b:b.content.url, title:a.title, h:a.content.height, badges:bd.map(function(x){ return x.text; }), bb:bb[0].text}; });
   ok(cb.a === cb.b && !/cb=/.test(cb.a), 'identical data -> identical face URL (no cache-buster)');
+  ok(/[?&]th=dark/.test(cb.a), 'connector passes Trello theme to the face');
   ok(cb.title === 'TF-Maintain v' + ver, 'section title carries the version', cb.title);
   ok(cb.h > 150 && cb.h <= 720, 'face height estimate: ' + cb.h);
   ok(JSON.stringify(cb.badges) === '["1 overdue","1 due"]', 'connector badges', cb.badges);

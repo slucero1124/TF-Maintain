@@ -2,7 +2,7 @@
 
 Maintenance-routine Power-Up for the UC Davis Tech Foundry (Davis/GBSF + Aggie Square, Sacramento). Staff and student workers check off recurring maintenance on Trello cards: machine cards (HAAS UMC 500, Kern lasers…), fleet cards (FDM printers, Formlabs SLA), and facility chore cards (sweeping, dusting, stock checks). Sibling of TF-Recharge, TF-Message, TF-Manufacture; same chassis, same visual language.
 
-**Current version: 0.2** — the whole Power-Up is the single file `tf-maintain.html`. There is no build step: edit the file, bump `VERSION`, test, push.
+**Current version: 0.3** — the whole Power-Up is the single file `tf-maintain.html`. There is no build step: edit the file, bump `VERSION`, test, push.
 
 ## Owner shorthand
 
