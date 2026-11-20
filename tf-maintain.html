@@ -249,7 +249,7 @@
    - standalone : file opened directly -> editor with browser-local storage.
 ============================================================================ */
 var SELF = location.origin + location.pathname;
-var VERSION = '0.3';
+var VERSION = '0.4';
 var CONFIG = {
   /* Trello API key from trello.com/power-ups/admin -> TF-Maintain -> API key.
      Empty = no REST: issue comments and history archives stay queued on the
@@ -786,6 +786,7 @@ function initSummary(){
   }
   if(!_member){ try{ _t.member('fullName','username').then(function(m){ _member = memberTagFrom(m) || ''; }); }catch(e){} }
   [400,1000,2000].forEach(function(ms){ setTimeout(sizeFace, ms); });
+  try{ new ResizeObserver(function(){ sizeFace(); }).observe($('summaryView')); }catch(e){}
 }
 
 /* height estimate for the face iframe (the face's own sizeTo may not work) */
@@ -1238,6 +1239,9 @@ function initConnector(){
         var d = JSON.stringify({m:m, q:qh, n:memberTagFrom(r && r.m) || ''});
         var th = ''; try{ var cx = t.getContext(); if(cx && (cx.theme === 'light' || cx.theme === 'dark')) th = cx.theme; }catch(e){}
         var url = SELF + '?view=summary' + (th ? '&th=' + th : '') + '&d=' + encodeURIComponent(d);
+        /* signing authenticates the face's own Trello channel (sizeTo, theme,
+           modal, set); without it the face can't resize itself */
+        try{ if(t.signUrl) url = t.signUrl(url); }catch(e){}
         return {
           title: 'TF-Maintain v' + VERSION,
           icon: TRELLO_ICON,

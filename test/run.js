@@ -36,10 +36,11 @@ const STUB = `
     member: function(){ return Promise.resolve({fullName:'Steven Lucero', username:'steven'}); },
     board: function(){ return Promise.resolve({members:[{fullName:'Valerie Bravo'},{fullName:'Tristan Adams'}]}); },
     modal: function(o){ top.__modals.push(o); return Promise.resolve(); },
-    sizeTo: function(){ return Promise.resolve(); },
+    sizeTo: function(sel){ try{ top.__sized = document.querySelector(sel).getBoundingClientRect().height; }catch(e){} return Promise.resolve(); },
     render: function(){},
     showCard: function(id){ top.__shown = id; },
     getContext: function(){ return {theme:'dark', card:'card1', board:'board1'}; },
+    signUrl: function(u){ return u + '#signed'; },
     getRestApi: function(){ return { isAuthorized: function(){ return Promise.resolve(!!top.__authorized); }, getToken: function(){ return Promise.resolve(top.__authorized ? 'tok' : null); }, authorize: function(){ top.__authorized = true; return Promise.resolve('tok'); } }; }
   };
   window.TrelloPowerUp = { iframe: function(){ return t; }, initialize: function(caps, opts){ top.__caps = caps; top.__capT = t; top.__initOpts = opts; } };
@@ -209,6 +210,7 @@ const server = http.createServer((req, res) => {
   };
   let fr = await mount(faceUrl(MNT));
   ok(!(await fr.isVisible('#app')), 'face never shows editor markup');
+  ok((await hp.evaluate(() => window.__sized)) > 150, 'face asks Trello to size it to its content');
   const fth = await fr.evaluate(() => ({mode: document.documentElement.getAttribute('data-color-mode'), cs: getComputedStyle(document.documentElement).colorScheme, bg: getComputedStyle(document.documentElement).backgroundColor, bbg: getComputedStyle(document.body).backgroundColor}));
   ok(fth.mode === 'dark' && fth.cs === 'dark' && fth.bg === 'rgba(0, 0, 0, 0)' && fth.bbg === 'rgba(0, 0, 0, 0)', 'face: dark theme, dark color-scheme, transparent background', fth);
   const g = await fr.$$eval('.sv-g', x => x.map(e => e.textContent));
@@ -254,6 +256,7 @@ const server = http.createServer((req, res) => {
   const cb = await hp.evaluate(async () => { var t = window.__capT; var a = await window.__caps['card-back-section'](t); var b = await window.__caps['card-back-section'](t); var bd = await window.__caps['card-badges'](t); var bb = window.__caps['board-buttons'](t); return {a:a.url||a.content.url, b:b.content.url, title:a.title, h:a.content.height, badges:bd.map(function(x){ return x.text; }), bb:bb[0].text}; });
   ok(cb.a === cb.b && !/cb=/.test(cb.a), 'identical data -> identical face URL (no cache-buster)');
   ok(/[?&]th=dark/.test(cb.a), 'connector passes Trello theme to the face');
+  ok(/#signed$/.test(cb.a), 'face URL is signed (authenticates its Trello channel)');
   ok(cb.title === 'TF-Maintain v' + ver, 'section title carries the version', cb.title);
   ok(cb.h > 150 && cb.h <= 720, 'face height estimate: ' + cb.h);
   ok(JSON.stringify(cb.badges) === '["1 overdue","1 due"]', 'connector badges', cb.badges);

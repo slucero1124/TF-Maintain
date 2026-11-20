@@ -2,7 +2,7 @@
 
 Maintenance-routine Power-Up for the UC Davis Tech Foundry (Davis/GBSF + Aggie Square, Sacramento). Staff and student workers check off recurring maintenance on Trello cards: machine cards (HAAS UMC 500, Kern lasers…), fleet cards (FDM printers, Formlabs SLA), and facility chore cards (sweeping, dusting, stock checks). Sibling of TF-Recharge, TF-Message, TF-Manufacture; same chassis, same visual language.
 
-**Current version: 0.3** — the whole Power-Up is the single file `tf-maintain.html`. There is no build step: edit the file, bump `VERSION`, test, push.
+**Current version: 0.4** — the whole Power-Up is the single file `tf-maintain.html`. There is no build step: edit the file, bump `VERSION`, test, push.
 
 ## Owner shorthand
 
@@ -15,7 +15,7 @@ Maintenance-routine Power-Up for the UC Davis Tech Foundry (Davis/GBSF + Aggie S
 2. **Palette:** Trello dark-card grays plus blue (`#579dff` / light `#0c66e4`). **Amber is approved for overdue and open issues** (owner decision for this Power-Up) and for warnings; nothing else. Monochrome line-SVG icons, no emoji. Light mode via `[data-color-mode="light"]`.
 3. **Card back is one-tap only.** No input fields on the face. Notes, readings, backdating and editing hand off to the expanded view (opened at that task with `&task=<id>&do=log`).
 4. **Refuse, never truncate.** Card data cap `MAX_BYTES = 3900`; every change goes through `mutate()`, which rolls back and warns if over. History is trimmed only by archiving into a card comment.
-5. **Deterministic face URL.** No cache-busters, nothing volatile in `?view=summary&d=…` (lesson from TF-Message v1.19). Data `{m, q, n}` = mnt, comment high-water mark, member tag.
+5. **Deterministic, signed face URL.** No cache-busters, nothing volatile in `?view=summary&d=…` (lesson from TF-Message v1.19). Data `{m, q, n}` = mnt, comment high-water mark, member tag. Always pass it through `t.signUrl` (v0.4 bug: unsigned faces could not `sizeTo` or read the theme).
 6. **Simulation-first.** `node test/run.js` must pass before shipping (Playwright + mock Trello; see Verification).
 7. **Built-in templates are starting points**, grounded in the TF fleet (machine names from TF-Manufacture's catalog). Intervals are sensible defaults, not manufacturer schedules; staff tune them per card.
 
