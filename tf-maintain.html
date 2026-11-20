@@ -1,0 +1,1279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TF-Maintain — Tech Foundry Power-Up</title>
+<script>
+/* Pre-paint routing: tag <html> with the view before the body parses so the
+   card face never paints editor markup (same lesson as TF-Recharge v3.2). */
+(function(){
+  var v = null; try{ v = new URLSearchParams(location.search).get('view'); }catch(e){}
+  var framed = false; try{ framed = window.self !== window.top; }catch(e){ framed = true; }
+  var c = 'v-standalone';
+  if(framed && v === 'summary') c = 'v-summary';
+  else if(framed && v === 'editor') c = 'v-editor';
+  else if(v === 'dash') c = 'v-dash';
+  else if(framed && !v) c = 'v-connector';
+  document.documentElement.className = c;
+})();
+</script>
+<script src="https://p.trellocdn.com/power-up.min.js"></script>
+<style>
+  :root{
+    --bg:#242528; --panel:#2b2c2f; --field:#1f2023;
+    --subtle:rgba(255,255,255,.06); --subtle-h:rgba(255,255,255,.12);
+    --line:#46474b; --text:#cecfd2; --dim:#96999e; --dimmer:#85878c;
+    --head:#e2e3e5; --blue:#579dff; --blue-bg:rgba(87,157,255,.15);
+    --amber:#f5cd47; --amber-bg:rgba(245,205,71,.13);
+  }
+  [data-color-mode="light"]{
+    --bg:#f1f2f4; --panel:#ffffff; --field:#ffffff;
+    --subtle:rgba(0,0,0,.05); --subtle-h:rgba(0,0,0,.1);
+    --line:#d5d7db; --text:#33373c; --dim:#6b6f76; --dimmer:#84878d;
+    --head:#1d2125; --blue:#0c66e4; --blue-bg:rgba(12,102,228,.10);
+    --amber:#946f00; --amber-bg:rgba(245,205,71,.25);
+  }
+  [data-color-mode="light"] .v-summary, [data-color-mode="light"].v-summary{ --panel:#f1f2f4 }
+  *{box-sizing:border-box}
+  .hidden{display:none !important}
+  [hidden]{display:none !important}
+  html,body{margin:0}
+  html.v-summary,html.v-connector{background:transparent}
+  body{background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px; -webkit-font-smoothing:antialiased; line-height:1.4; padding:20px 16px}
+  .v-summary body,.v-connector body{padding:0; background:transparent}
+  .num{font-variant-numeric:tabular-nums}
+  button{font:inherit; color:inherit; cursor:pointer}
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--blue); outline-offset:1px}
+  svg{display:block}
+
+  /* view routing */
+  .view{display:none}
+  .v-summary #summaryView{display:block}
+  .v-editor #app,.v-standalone #app{display:block}
+  .v-dash #dashView{display:block}
+
+  /* ===== shared bits ===== */
+  .panel{max-width:760px; margin:0 auto; background:var(--panel); border-radius:10px; padding:14px 18px 16px}
+  .head{display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap}
+  .title{display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; color:var(--head)}
+  .title svg{color:var(--dim)}
+  .ver{font-weight:600; font-size:11px; color:var(--dimmer)}
+  .head-right{display:flex; align-items:center; gap:12px; margin-left:auto}
+  .savechip{font-size:11px; font-weight:600; padding:2px 9px; border-radius:999px; border:1px solid var(--line); color:var(--dim); white-space:nowrap}
+  .savechip.err{color:var(--amber); border-color:var(--amber)}
+  .capwrap{display:flex; flex-direction:column; gap:2px; min-width:110px}
+  .capwrap .cl{display:flex; justify-content:space-between; font-size:10px; color:var(--dimmer); font-weight:600}
+  .capbar{height:4px; background:var(--subtle); border-radius:999px; overflow:hidden}
+  .capfill{height:100%; width:0; background:var(--dim); border-radius:999px}
+  .capfill.warn{background:var(--amber)}
+  .sec{margin-top:16px}
+  .sec-h{display:flex; align-items:center; gap:8px; margin-bottom:6px}
+  .sec-t{font-size:11px; font-weight:800; color:var(--blue); text-transform:uppercase; letter-spacing:.06em}
+  .sec-h .aside{margin-left:auto; font-size:11.5px; color:var(--dimmer)}
+  .hint{font-size:12px; color:var(--dimmer)}
+  .warnbox{border:1px solid var(--amber); color:var(--amber); background:var(--amber-bg); border-radius:6px; padding:7px 10px; font-size:12.5px; margin-bottom:10px}
+  .btn{appearance:none; border:1px solid var(--line); background:transparent; color:var(--text); border-radius:6px; padding:5px 12px; font-size:12.5px; font-weight:600; white-space:nowrap}
+  .btn:hover{background:var(--subtle)}
+  .btn.pri{background:var(--blue); border-color:var(--blue); color:#1d2125}
+  [data-color-mode="light"] .btn.pri{color:#fff}
+  .btn.pri:hover{filter:brightness(1.08)}
+  .btn.ghost{border-color:transparent; color:var(--dim)}
+  .btn.ghost:hover{color:var(--text)}
+  .btn.danger{color:var(--amber); border-color:var(--amber)}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+  .btnrow{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .seg{display:inline-flex; background:var(--subtle); border-radius:6px; padding:2px; gap:2px; flex-wrap:wrap}
+  .seg button{border:0; background:transparent; color:var(--dim); padding:4px 11px; border-radius:4px; font-size:12px; font-weight:600}
+  .seg button:hover{color:var(--text)}
+  .seg button[aria-pressed="true"]{background:var(--blue); color:#1d2125}
+  [data-color-mode="light"] .seg button[aria-pressed="true"]{color:#fff}
+  .seg button:disabled{opacity:.4; cursor:not-allowed}
+  .fin{width:100%; font:inherit; font-size:12.5px; padding:6px 9px; color:var(--text); background:var(--field); border:1px solid var(--line); border-radius:5px; color-scheme:dark}
+  [data-color-mode="light"] .fin{color-scheme:light}
+  .fin::placeholder{color:var(--dimmer)}
+  .fin:focus{outline:0; border-color:var(--blue)}
+  select.fin{appearance:none; -webkit-appearance:none; padding-right:26px;
+    background-image:linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+    background-position:calc(100% - 15px) 55%, calc(100% - 10px) 55%; background-size:5px 5px; background-repeat:no-repeat}
+  .fl{display:flex; flex-direction:column; gap:4px; min-width:0}
+  .fl > label, .fl > .lb{font-size:11px; font-weight:700; color:var(--dim)}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px}
+  .inl{display:flex; gap:6px; align-items:center}
+  .inl .fin{width:auto; flex:1 1 60px; min-width:0}
+  .chk-l{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--dim); cursor:pointer}
+  .chk-l input{accent-color:var(--blue); width:14px; height:14px}
+  .chips{display:flex; flex-wrap:wrap; gap:5px}
+  .uchip{display:inline-flex; align-items:center; gap:4px; font-size:12px; border:1px solid var(--line); border-radius:999px; padding:2px 4px 2px 10px; color:var(--text)}
+  .uchip button{border:0; background:transparent; color:var(--dimmer); padding:0 5px; font-size:13px; line-height:1; border-radius:999px}
+  .uchip button:hover{color:var(--head); background:var(--subtle-h)}
+  .pick{appearance:none; font-size:12px; font-weight:600; border:1px solid var(--line); background:transparent; color:var(--dim); border-radius:999px; padding:3px 10px}
+  .pick[aria-pressed="true"]{border-color:var(--blue); color:var(--blue); background:var(--blue-bg)}
+  .pill{display:inline-block; font-size:11px; font-weight:700; border-radius:3px; padding:1px 6px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; background:var(--subtle); color:var(--dim)}
+  .pill.over{background:var(--amber-bg); color:var(--amber)}
+  .pill.due{background:var(--blue-bg); color:var(--blue)}
+  .pill.own{font-weight:600; color:var(--dim); background:transparent; border:1px solid var(--line)}
+
+  /* ===== editor: tasks ===== */
+  .tasks{border-top:1px solid var(--line)}
+  .trow{border-bottom:1px solid var(--line)}
+  .tline{display:grid; grid-template-columns:96px minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 2px}
+  .tname{color:var(--head); font-weight:600; font-size:13px; overflow-wrap:anywhere}
+  .tsub{font-size:11.5px; color:var(--dimmer); margin-top:1px}
+  .tbtns{display:flex; gap:4px}
+  .tform{background:var(--subtle); border-radius:8px; padding:11px 12px 12px; margin:0 0 10px; display:flex; flex-direction:column; gap:10px}
+  .ulist{display:flex; flex-direction:column; gap:4px}
+  .ulist .inl span{font-size:12.5px; min-width:120px}
+
+  /* ===== editor: picker ===== */
+  .picker{display:grid; grid-template-columns:minmax(0,240px) minmax(0,1fr); gap:16px}
+  @media (max-width:640px){ .picker{grid-template-columns:1fr} }
+  .tpls{display:flex; flex-direction:column; gap:1px; max-height:520px; overflow:auto}
+  .tpls .g{font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--dimmer); padding:10px 8px 3px}
+  .tpls .g:first-child{padding-top:0}
+  .tpl{border:0; background:transparent; text-align:left; padding:5px 8px; border-radius:5px; color:var(--text); display:flex; justify-content:space-between; gap:8px; font-size:12.5px}
+  .tpl small{color:var(--dimmer); font-size:11.5px; white-space:nowrap}
+  .tpl:hover{background:var(--subtle)}
+  .tpl[aria-pressed="true"]{background:var(--blue-bg); color:var(--blue)}
+  .tpl[aria-pressed="true"] small{color:var(--blue)}
+  .prev{min-width:0; display:flex; flex-direction:column; gap:10px}
+  .prev h3{margin:0; font-size:14px; color:var(--head)}
+  .tblw{overflow-x:auto}
+  table{border-collapse:collapse; width:100%; font-size:12.5px}
+  th{text-align:left; font-size:11px; font-weight:700; color:var(--dimmer); padding:5px 8px; border-bottom:1px solid var(--line); white-space:nowrap}
+  td{padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top}
+  td.nw{white-space:nowrap}
+  .hist{display:flex; flex-direction:column}
+  .hrow{display:flex; gap:10px; font-size:12px; padding:4px 2px; border-bottom:1px solid var(--line); align-items:baseline}
+  .hrow .hd{flex:0 0 92px; color:var(--dimmer); font-variant-numeric:tabular-nums}
+  .hrow .hx{flex:1 1 auto; min-width:0; overflow-wrap:anywhere}
+  .hrow .hb{flex:0 0 auto; color:var(--dimmer)}
+  .flagrow{display:flex; gap:10px; align-items:center; padding:6px 2px; border-bottom:1px solid var(--line); font-size:12.5px}
+  .flagrow .fx{flex:1 1 auto; min-width:0}
+  .flagrow svg{color:var(--amber); flex:0 0 auto}
+
+  /* ===== card face (summary) ===== */
+  #summaryView{font-size:13px; padding:0 0 2px}
+  .sv-box{background:var(--panel); border-radius:6px; padding:2px 10px 4px}
+  .sv-empty{color:var(--dim); font-size:12.5px; padding:2px 0 6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .sv-g{font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--dimmer); padding:8px 0 2px}
+  .sv-g.over{color:var(--amber)} .sv-g.due{color:var(--blue)}
+  .sv-t{display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:8px; align-items:start; padding:6px 0; border-top:1px solid var(--line)}
+  .sv-g + .sv-t, .sv-g + .sv-f{border-top:0}
+  .sv-chk{width:18px; height:18px; border-radius:4px; border:1.5px solid var(--dim); background:transparent; display:grid; place-items:center; padding:0; margin-top:1px}
+  .sv-chk svg{opacity:0}
+  .sv-t.done .sv-chk{background:var(--blue); border-color:var(--blue)}
+  .sv-t.done .sv-chk svg{opacity:1; color:var(--bg)}
+  .sv-t.over .sv-chk{border-color:var(--amber)}
+  .sv-n{color:var(--text); font-size:12.5px; font-weight:600; overflow-wrap:anywhere}
+  .sv-t.done .sv-n{color:var(--dim); font-weight:500}
+  .sv-m{font-size:11px; color:var(--dimmer); margin-top:1px}
+  .sv-m b{font-weight:700}
+  .sv-t.over .sv-m b{color:var(--amber)} .sv-t.due .sv-m b{color:var(--blue)}
+  .sv-u{display:flex; flex-wrap:wrap; gap:4px; margin-top:5px}
+  .sv-uc{font-size:11px; border:1px solid var(--line); border-radius:4px; background:transparent; color:var(--dim); padding:1px 6px; display:inline-flex; align-items:center; gap:3px}
+  .sv-uc.on{background:var(--blue-bg); border-color:var(--blue); color:var(--blue)}
+  .sv-uc.over{border-color:var(--amber); color:var(--amber)}
+  .sv-a{display:flex; gap:1px}
+  .sv-ic{border:0; background:transparent; color:var(--dimmer); padding:2px 3px; border-radius:4px}
+  .sv-ic:hover{color:var(--text); background:var(--subtle)}
+  .sv-f{display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid var(--line)}
+  .sv-f > svg{color:var(--amber); justify-self:center}
+  .sv-f .sv-n{color:var(--amber)}
+  .sv-up{font-size:11.5px; color:var(--dimmer); padding:6px 0 3px; border-top:1px solid var(--line)}
+  .sv-none{font-size:12px; color:var(--dim); padding:6px 0 4px}
+  .sv-toast{font-size:11px; color:var(--dim); min-height:0; padding:4px 2px 0}
+  .sv-toast:empty{display:none}
+  .sv-btn{appearance:none; border:0; background:var(--subtle-h); color:var(--text); border-radius:4px; padding:4px 10px; font-size:12px; font-weight:600}
+  .sv-btn:hover{background:var(--line)}
+
+  /* ===== dashboard ===== */
+  .dfilters{display:flex; gap:10px 16px; flex-wrap:wrap; align-items:center; margin-bottom:10px}
+  .dfilters .fin{width:auto}
+  .dsum{font-weight:700; color:var(--head)}
+  td a, .lnk{color:var(--blue); text-decoration:none; cursor:pointer; background:none; border:0; padding:0; font:inherit; text-align:left}
+  td a:hover, .lnk:hover{text-decoration:underline}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; scroll-behavior:auto !important} }
+</style>
+</head>
+<body>
+
+<!-- ===================== card face ===================== -->
+<div id="summaryView" class="view"><div id="svBody"></div><div id="svToast" class="sv-toast" role="status"></div></div>
+
+<!-- ===================== editor / standalone ===================== -->
+<div id="app" class="view">
+  <div class="panel">
+    <div class="head">
+      <span class="title"><span id="titleIcon"></span>TF-Maintain <span class="ver" id="verInline"></span></span>
+      <div class="head-right">
+        <span id="saveChip" class="savechip" hidden></span>
+        <div class="capwrap" title="Trello allows about 4 KB of Power-Up data per card"><div class="cl"><span>Card storage</span><span id="capTxt" class="num"></span></div><div class="capbar"><div class="capfill" id="capFill"></div></div></div>
+      </div>
+    </div>
+    <div id="warn" class="warnbox" hidden></div>
+    <div class="btnrow" style="gap:10px 14px">
+      <span class="hint" style="font-weight:700">Site</span><div class="seg" id="siteSeg"></div>
+    </div>
+    <div id="edBody"></div>
+  </div>
+</div>
+
+<!-- ===================== board dashboard ===================== -->
+<div id="dashView" class="view">
+  <div class="panel" style="max-width:980px">
+    <div class="head"><span class="title"><span id="dashIcon"></span>TF-Maintain <span class="ver" id="verDash"></span></span>
+      <div class="head-right"><button class="btn ghost" id="dashRefresh">Refresh</button></div></div>
+    <div id="dashBody"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   TF-Maintain — maintenance routines Power-Up for the UC Davis Tech Foundry
+   Same chassis as TF-Recharge / TF-Message / TF-Manufacture, plus a dashboard:
+   - connector  : hidden iframe Trello loads (no ?view=). card-back-section,
+                  card-badges, board-buttons; BroadcastChannel save relay;
+                  posts queued comments through the REST API.
+   - summary    : card-back panel (?view=summary&d=...). One-tap logging.
+   - editor     : expanded view in a Trello modal (?view=editor[&task=&do=log]).
+   - dash       : board dashboard modal (?view=dash). Needs REST authorization.
+   - standalone : file opened directly -> editor with browser-local storage.
+============================================================================ */
+var SELF = location.origin + location.pathname;
+var VERSION = '0.1';
+var CONFIG = {
+  /* Trello API key from trello.com/power-ups/admin -> TF-Maintain -> API key.
+     Empty = no REST: issue comments and history archives stay queued on the
+     card, and the dashboard / copy-from-card show setup instructions. */
+  APP_KEY: '',
+  APP_NAME: 'TF-Maintain',
+  ROLES: ['Engineer', 'Technician'],
+  MAX_BYTES: 3900,     // card pluginData budget (Trello hard cap ~4096): refuse, never truncate
+  TPL_BYTES: 3900,     // board pluginData budget for board templates
+  H_KEEP: 40,          // history entries kept on the card before archiving
+  H_BYTES: 1500,       // ...or this many chars of history
+  ARCH_CHUNK: 15,      // entries moved per archive comment
+  NOTE_MAX: 140
+};
+var BC_NAME = 'tf-maint';
+
+/* ----- tiny utils -------------------------------------------------------- */
+function getParam(n){ try{ return new URLSearchParams(location.search).get(n); }catch(e){ return null; } }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var $ = function(id){ return document.getElementById(id); };
+var _idLast = 0;
+function newId(){ var n = Date.now(); if(n <= _idLast) n = _idLast + 1; _idLast = n; return n.toString(36).slice(-6); }
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+var SITES = [['davis','Davis'],['as','Aggie Square'],['both','Both']];
+function siteName(s){ for(var i=0;i<SITES.length;i++) if(SITES[i][0]===s) return SITES[i][1]; return ''; }
+
+var IC = {
+  wrench:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  check:'<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+  note:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2.5h7l3 3v8H3z"/><path d="M5.5 7.5h5M5.5 10h3.5"/></svg>',
+  flag:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14V2.5M3.5 3h8l-1.6 3 1.6 3h-8"/></svg>',
+  x:'<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>'
+};
+function iconUri(color){ return 'data:image/svg+xml,' + encodeURIComponent(IC.wrench.replace('width="16" height="16"','xmlns="http://www.w3.org/2000/svg" width="24" height="24"').replace(/currentColor/g, color)); }
+var TRELLO_ICON = iconUri('#888888');
+
+/* ----- dates (local calendar days; weekends never count) ------------------ */
+function pad(n){ return (n<10?'0':'') + n; }
+function ymd(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+function pYmd(s){ var m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(s||''); return m ? new Date(+m[1], +m[2]-1, +m[3]) : null; }
+function today(){ var d = window.__TODAY ? pYmd(window.__TODAY) : new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function addD(d,n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); }
+function addM(d,n){ var y=d.getFullYear(), m=d.getMonth()+n; var last = new Date(y, m+1, 0).getDate(); return new Date(y, m, Math.min(d.getDate(), last)); }
+function isWE(d){ var w = d.getDay(); return w===0 || w===6; }
+function nextWD(d){ while(isWE(d)) d = addD(d,1); return d; }
+/* last day of a window of w workdays that starts on (the next workday from) open */
+function windowEnd(open, w){ var d = nextWD(open), k = 1; while(k < w){ d = addD(d,1); if(!isWE(d)) k++; } return d; }
+function workdaysAfter(a, b){ var k=0, d=a; while(d < b){ d = addD(d,1); if(!isWE(d)) k++; } return k; }
+var MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], WDN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function fmtS(d){ if(!d) return ''; var s = MO[d.getMonth()] + ' ' + d.getDate(); if(d.getFullYear() !== today().getFullYear()) s += ', ' + d.getFullYear(); return s; }
+function fmtL(d){ return d ? WDN[d.getDay()] + ' ' + fmtS(d) : ''; }
+
+/* intervals are compact strings: '3d', '1w', '2w', '1m', '3m', '12m' */
+function parseEv(ev){ var m = /^(\d+)([dwm])$/.exec(ev||''); return m ? {n:Math.max(1,+m[1]), u:m[2]} : {n:1, u:'w'}; }
+function addEv(d, ev, k){ var e = parseEv(ev); if(k==null) k = 1; return e.u==='m' ? addM(d, e.n*k) : addD(d, e.n*k*(e.u==='w'?7:1)); }
+function evText(ev){
+  var e = parseEv(ev);
+  if(e.n===1) return {d:'Daily', w:'Weekly', m:'Monthly'}[e.u];
+  if(e.u==='m' && e.n===3) return 'Quarterly';
+  if(e.u==='m' && e.n===12) return 'Yearly';
+  return 'Every ' + e.n + ' ' + {d:'days', w:'weeks', m:'months'}[e.u];
+}
+
+/* ----- scheduling --------------------------------------------------------
+   From-last mode ('l'): opens one interval after the last completion (next
+   workday), stays open for w workdays, then is overdue.
+   Fixed mode ('f'): occurrences are anchor + k*interval regardless of when it
+   was last done; missed occurrences collapse into the current one.
+   Returns {st:'up'|'due'|'over', open, due}.                                */
+function slotStatus(k, ldStr, T){
+  var w = Math.max(1, k.w||1), ld = pYmd(ldStr), open, due;
+  if(k.md === 'f'){
+    var an = pYmd(k.an) || pYmd(k.c) || T;
+    if(T < an){ open = nextWD(an); return {st:'up', open:open, due:windowEnd(open,w)}; }
+    var i = 0; while(addEv(an, k.ev, i+1) <= T && i < 5000) i++;
+    var occ = addEv(an, k.ev, i);
+    if(ld && ld >= occ){ open = nextWD(addEv(an, k.ev, i+1)); return {st:'up', open:open, due:windowEnd(open,w)}; }
+    open = nextWD(occ);
+  } else {
+    open = ld ? nextWD(addEv(ld, k.ev, 1)) : nextWD(pYmd(k.c) || T);
+  }
+  due = windowEnd(open, w);
+  if(T < open) return {st:'up', open:open, due:due};
+  return {st: T > due ? 'over' : 'due', open:open, due:due};
+}
+function stRank(s){ return s==='over' ? 2 : s==='due' ? 1 : 0; }
+function isPerUnit(k, units){ return k.ap === 'u' && units && units.length > 0; }
+function statusOf(k, units, T){
+  T = T || today();
+  if(isPerUnit(k, units)){
+    var us = units.map(function(u){ var s = slotStatus(k, (k.lu||{})[u], T); s.u = u; return s; });
+    var worst = 'up', due = null, open = null, nUp = 0;
+    us.forEach(function(s){
+      if(stRank(s.st) > stRank(worst)) worst = s.st;
+      if(s.st === 'up'){ nUp++; if(!open || s.open < open) open = s.open; }
+      else if(!due || s.due < due) due = s.due;
+    });
+    return {st:worst, due:due || (us[0] && us[0].due), open:open, units:us, doneN:nUp, total:us.length};
+  }
+  return slotStatus(k, k.ld, T);
+}
+/* card-level counts used by badges, dashboard and the height estimate */
+function cardCounts(m, T){
+  var c = {over:0, due:0, up:0, flags:0};
+  if(!m || !Array.isArray(m.k)) return c;
+  m.k.forEach(function(k){ c[statusOf(k, m.u||[], T).st]++; });
+  c.flags = (m.fl||[]).length;
+  return c;
+}
+function badgesFor(m, T){
+  var c = cardCounts(m, T), out = [];
+  if(c.over) out.push({ text: c.over + ' overdue', color:'yellow', icon: iconUri('#5c4400') });
+  if(c.due)  out.push({ text: c.due + ' due', color:'blue', icon: iconUri('#09326c') });
+  return out;
+}
+
+/* ----- card state ----------------------------------------------------------
+   mnt = { v:1, s:site, u:[units], k:[tasks], h:[history], fl:[open flags], q:[queued comments] }
+   task  = { i,n, ev:'2w', w:workdays, md:'l'|'f', an:'YYYY-MM-DD', ap:''|'u', rd:reading label,
+             ow:owner, ld:'YYYY-MM-DD', lu:{unit:'YYYY-MM-DD'}, c:created }
+   hist  = { k:taskId, d:epochSec, by, u:[units]?, p:prev ld (string | {unit:prev}), nt?, r?, f? }
+   flag  = { i, k, d, by, u?, nt? }       queued comment = { i:epochMs, x:text }
+   mntq (separate key, connector-written only) = { h: id of last posted comment } */
+function blank(){ return {v:1, s:'', u:[], k:[], h:[], fl:[], q:[]}; }
+function norm(d){
+  var b = blank();
+  if(!d || typeof d !== 'object') return b;
+  if(typeof d.s === 'string') b.s = d.s;
+  ['u','k','h','fl','q'].forEach(function(f){ if(Array.isArray(d[f])) b[f] = d[f]; });
+  b.k = b.k.filter(function(k){ return k && k.i && typeof k.n === 'string'; });
+  return b;
+}
+var S = blank(), _qh = 0, _member = '', _t = null, _sim = false, _ready = false, _view = '';
+function hasRoutine(m){ return !!(m && Array.isArray(m.k) && m.k.length); }
+function taskById(id){ for(var i=0;i<S.k.length;i++) if(S.k[i].i === id) return S.k[i]; return null; }
+function stateBytes(){ return JSON.stringify({mnt:S}).length; }
+function nowSec(){ return window.__TODAY ? Math.floor(pYmd(window.__TODAY).getTime()/1000) + 43200 : Math.floor(Date.now()/1000); }
+function dateOfEntry(e){ var d = new Date(e.d*1000); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+/* comments: queued in card data, posted later by the connector (REST) */
+function queueComment(text){
+  var last = S.q.length ? S.q[S.q.length-1].i : 0, i = Math.max(Date.now(), last+1, _qh+1);
+  S.q.push({i:i, x:text});
+}
+function taskLabel(k, units){ return (k ? k.n : '(removed task)') + (units && units.length ? ' (' + units.join(', ') + ')' : ''); }
+function stamp(){ var T = today(); return MO[T.getMonth()] + ' ' + T.getDate() + ', ' + T.getFullYear(); }
+function flagComment(k, units, note){
+  return 'TF-Maintain: issue flagged\nTask: ' + taskLabel(k, units) + '\nBy: ' + (_member || 'staff') + ', ' + stamp() + (note ? '\nNote: ' + note : '');
+}
+function archiveText(entries){
+  var lines = entries.map(function(e){
+    var k = taskById(e.k), d = dateOfEntry(e);
+    var s = '- ' + MO[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() + ': ' + taskLabel(k, e.u);
+    if(e.by) s += ', ' + e.by;
+    if(e.r) s += ', reading ' + e.r + (k && k.rd ? ' ' + k.rd : '');
+    if(e.f) s += ', issue flagged';
+    if(e.nt) s += '. Note: ' + e.nt;
+    return s;
+  });
+  return 'TF-Maintain: completion history archive (' + entries.length + ' entr' + (entries.length===1?'y':'ies') + ')\n' + lines.join('\n');
+}
+function archiveIfNeeded(){
+  var over = function(){ return S.h.length > CONFIG.H_KEEP || JSON.stringify(S.h).length > CONFIG.H_BYTES; };
+  if(!over()) return;
+  var n = Math.min(S.h.length, Math.max(CONFIG.ARCH_CHUNK, S.h.length - CONFIG.H_KEEP));
+  var moved = S.h.splice(0, n);
+  while(over() && S.h.length){ moved.push(S.h.shift()); }
+  queueComment(archiveText(moved));
+}
+/* all state changes go through here: snapshot, mutate, archive, size-check.
+   Over the cap -> roll back and warn (refuse, never truncate). */
+var _warnFn = null;
+function mutate(fn){
+  var snap = JSON.stringify(S);
+  try{ fn(); }catch(e){ S = JSON.parse(snap); throw e; }
+  S.q = S.q.filter(function(x){ return x.i > _qh; });
+  archiveIfNeeded();
+  if(stateBytes() > CONFIG.MAX_BYTES){
+    S = JSON.parse(snap);
+    var pend = S.q.length;
+    if(_warnFn) _warnFn('Card storage is full, so that change was not saved.' + (pend ? ' ' + pend + ' comment' + (pend>1?'s are':' is') + ' waiting to be posted; once a member who has authorized TF-Maintain opens this card they post and free space.' : ' Remove tasks or units, or shorten notes.'));
+    return false;
+  }
+  return true;
+}
+
+/* ----- logging --------------------------------------------------------- */
+function logDone(k, units, ex){
+  ex = ex || {};
+  var on = ex.on ? pYmd(ex.on) : today(), D = ymd(on);
+  var e = {k:k.i, d: ex.on && ex.on !== ymd(today()) ? Math.floor(on.getTime()/1000) + 43200 : nowSec()};
+  if(_member) e.by = _member;
+  if(units && units.length){
+    e.u = units.slice(); e.p = {}; k.lu = k.lu || {};
+    units.forEach(function(u){ e.p[u] = k.lu[u] || ''; if(!k.lu[u] || k.lu[u] < D) k.lu[u] = D; });
+  } else {
+    e.p = k.ld || ''; if(!k.ld || k.ld < D) k.ld = D;
+  }
+  if(ex.nt) e.nt = String(ex.nt).slice(0, CONFIG.NOTE_MAX);
+  if(ex.r) e.r = String(ex.r).slice(0, 24);
+  if(ex.f){ e.f = 1; addFlag(k, units, ex.nt); }
+  S.h.push(e);
+}
+function addFlag(k, units, note){
+  var f = {i:newId(), k:k.i, d:nowSec()};
+  if(_member) f.by = _member;
+  if(units && units.length) f.u = units.slice();
+  if(note) f.nt = String(note).slice(0, CONFIG.NOTE_MAX);
+  S.fl.push(f);
+  queueComment(flagComment(k, units, note));
+}
+function clearFlag(id){ S.fl = S.fl.filter(function(f){ return f.i !== id; }); }
+/* today's completions for a task: {any, units:{u:true}} */
+function doneToday(k){
+  var T = today().getTime(), r = {any:false, units:{}};
+  S.h.forEach(function(e){
+    if(e.k !== k.i || dateOfEntry(e).getTime() !== T) return;
+    r.any = true; (e.u||[]).forEach(function(u){ r.units[u] = true; });
+  });
+  return r;
+}
+/* undo today's completion(s) of a task, optionally just one unit */
+function undoToday(k, unit){
+  var T = today().getTime();
+  for(var j = S.h.length-1; j >= 0; j--){
+    var e = S.h[j];
+    if(e.k !== k.i || dateOfEntry(e).getTime() !== T) continue;
+    if(e.u){
+      var us = unit ? e.u.filter(function(u){ return u === unit; }) : e.u.slice();
+      us.forEach(function(u){
+        var p = e.p && e.p[u]; k.lu = k.lu || {};
+        if(p) k.lu[u] = p; else delete k.lu[u];
+        e.u = e.u.filter(function(x){ return x !== u; }); if(e.p) delete e.p[u];
+      });
+      if(!e.u.length) S.h.splice(j,1);
+      if(unit && us.length) return true;
+    } else if(!unit){
+      if(e.p) k.ld = e.p; else delete k.ld;
+      S.h.splice(j,1);
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ----- templates ----------------------------------------------------------
+   Built-in starting points grounded in the TF fleet. Intervals are sensible
+   defaults, not manufacturer schedules: staff tune them per card.
+   Task tuple: [name, interval, window workdays, applies ('u' = each unit),
+                reading label, owner, schedule ('' = from last, 'f:m1' = fixed
+                on day 1 of the month, 'f:w1' = fixed weekly from Monday)]   */
+var BUILTIN = [
+ {id:'fdm', g:'3D printing', n:'FDM printer fleet', u:['Bambu X1C','Bambu H2D','Bambu H2C','Prusa XL','Voron 2.4','OrangeStorm Giga'], k:[
+   ['Clean build plates (IPA)','1w',3,'u'],['Wipe enclosures, empty purge bins','1w',3],
+   ['Inspect nozzles, clear partial clogs','2w',3,'u'],['Check belt tension','1m',5,'u'],
+   ['Clean and lubricate rods and lead screws','3m',5,'u','','Technician'],['Filament dry box humidity','1w',3,'','% RH']]},
+ {id:'fdmi', g:'3D printing', n:'Industrial FDM (F-120, Mark II)', u:['Stratasys F-120','Markforged Mark II'], k:[
+   ['Empty purge bin, clean tip wipe','1w',3,'u'],['Check model and support material levels','1w',3,'u'],
+   ['Clean and level print bed','2w',3,'u'],['Inspect nozzles and drive gears','1m',5,'u','','Technician']]},
+ {id:'sla', g:'3D printing', n:'SLA printer fleet (Formlabs)', u:['Form 3B','Form 3BL','Form 4B','Form 4BL'], k:[
+   ['Inspect resin tanks for cured film and damage','1w',2,'u'],['Wipe build platforms','1w',3,'u'],
+   ['Form Wash IPA concentration','2w',3,'','% IPA'],['Clean optical window','1m',3,'u'],
+   ['Clean Form Cure turntable and reflector','1m',3],['Resin and IPA waste to hazardous waste','1m',5,'','','Technician']]},
+ {id:'mjf', g:'3D printing', n:'HP Jet Fusion (MJF)', u:['Jet Fusion 5200','Jet Fusion 580 Color'], k:[
+   ['Clean processing station and sieve','1w',2],['Printhead health check','1w',2,'u'],
+   ['Powder stock and refresh ratio','1w',3,'','kg fresh'],['Inspect and clean fusing lamps','1m',3,'u','','Technician'],
+   ['Clean build unit and vacuum filters','1m',5]]},
+ {id:'pj', g:'3D printing', n:'Stratasys J5 PolyJet', u:['J5 MediJet','J5 Digital Anatomy'], k:[
+   ['Clean printheads and roller wiper','1w',2,'u'],['Pattern test','1w',2,'u'],
+   ['Empty waste container','2w',3,'u'],['UV lamp hours','1m',3,'u','hrs']]},
+ {id:'mf', g:'3D printing', n:'CADworks3D ProFluidics 285D', u:[], k:[
+   ['Inspect vat film, filter resin','1w',3],['Clean build plate','1w',3],['Clean projector glass','1m',3]]},
+ {id:'haas', g:'Machining', n:'HAAS UMC 500', u:[], k:[
+   ['Coolant concentration','1w',2,'','% Brix'],['Coolant level, top off','1w',2],
+   ['Clear chips, wipe enclosure and windows','1w',3],['Drain air regulator / filter bowl','2w',3],
+   ['Way lube and spindle oil levels','2w',3],['Clean chip screens and conveyor','1m',5],
+   ['Inspect tool holders and pull studs','3m',5,'','','Engineer'],['Probe calibration','3m',5,'','','Engineer']]},
+ {id:'router', g:'Machining', n:'CNC routers (SR-3015, Shopbot)', u:['HAAS SR-3015','Shopbot 4x4'], k:[
+   ['Vacuum table and spoilboard','1w',3,'u'],['Empty dust collector','1w',3],
+   ['Inspect collets and bits','1m',5,'u'],['Clean and lube rails and screws','1m',5,'u','','Technician']]},
+ {id:'manual', g:'Machining', n:'Manual mill and lathe', u:['Kent KTM-3VKF','Acer E-Mill','Jet GBH-1340A'], k:[
+   ['Clean chips, oil exposed ways','1w',3,'u'],['Check oil sight glasses','1m',3,'u'],
+   ['Inspect guards and e-stops','1m',3,'u']]},
+ {id:'co2', g:'Cutting', n:'Kern CO2 laser', u:[], k:[
+   ['Clean lens and mirrors','1w',2],['Drain air assist compressor','2w',3],
+   ['Chiller water level and temperature','1m',3,'','°C'],['Clean honeycomb bed and debris tray','1m',3],
+   ['Exhaust and filter check','3m',5,'','','Technician']]},
+ {id:'fiber', g:'Cutting', n:'Kern FC50 FiberCELL (1000W)', u:[], k:[
+   ['Clean protective window','1w',2],['Chiller water level and temperature','1m',3,'','°C'],
+   ['Clean slats and debris tray','1m',3],['Fume extraction filter check','3m',5]]},
+ {id:'wj', g:'Cutting', n:'Wazer Pro waterjet', u:[], k:[
+   ['Empty abrasive waste bucket','1w',3],['Abrasive level','1w',3,'','lb'],
+   ['Inspect nozzle and focusing tube','1m',3],['Change tank water','1m',5]]},
+ {id:'vinyl', g:'Cutting', n:'Silhouette Cameo 4 Pro', u:[], k:[
+   ['Clean cutting mat','2w',5],['Inspect and replace blade','1m',5]]},
+ {id:'uv', g:'Other equipment', n:'eufyMake E1 UV printer', u:[], k:[
+   ['Nozzle check print','1w',2],['Clean wiper and capping station','1w',3],
+   ['Ink levels','1w',3],['Clean print platform and carriage rails','1m',5]]},
+ {id:'vac', g:'Other equipment', n:'Formech 450 DT vacuum former', u:[], k:[
+   ['Clean platen and heater guard','1m',5],['Inspect seals and gaskets','3m',5]]},
+ {id:'mold', g:'Other equipment', n:'Injection presses', u:['Morgan Press GT-100T','LMS PIM-MODEL-150A'], k:[
+   ['Purge and clean barrel and nozzle','1m',5,'u'],['Inspect mold faces and vents','1m',5,'u'],
+   ['Check air and hydraulic lines','3m',5,'u','','Engineer']]},
+ {id:'brake', g:'Other equipment', n:'Langmuir Titan 25T press brake', u:[], k:[
+   ['Clean and inspect dies','1m',5],['Inspect guards and controls','1m',5],['Lubricate per manual','3m',5]]},
+ {id:'chores', g:'Facility', n:'Student chores', u:[], k:[
+   ['Sweep shop floor','2w',3],['Wipe down workbenches','1w',3],
+   ['Dust shelves and work surfaces','1m',5],['Check filament and resin stock','1w',3],
+   ['Empty trash and recycling','1w',2],['Restock gloves and safety glasses','2w',3]]},
+ {id:'safety', g:'Facility', n:'Safety checks', u:[], k:[
+   ['Flush eyewash station','1w',2,'','','','f:w1'],['Fire extinguisher visual check','1m',3,'','','','f:m1'],
+   ['First aid kit restock check','1m',3],['Hazardous waste labels and lids','1w',2],
+   ['Exits and walkways clear','1m',3]]},
+ {id:'air', g:'Facility', n:'Shop air compressor', u:[], k:[
+   ['Drain tank','1w',3],['Line pressure','1w',3,'','psi'],['Inspect intake filter','3m',5,'','','Technician']]},
+ {id:'dust', g:'Facility', n:'Dust collection and fume extraction', u:[], k:[
+   ['Empty collection bins','2w',3],['Filter pressure check','1m',3,'','Pa'],['Inspect ducting and gates','3m',5]]}
+];
+var BOARD_T = {};   // board-shared 'mntT': {id:{n, u, k, g?}} -- custom templates + edited built-ins
+function tplList(){
+  var out = [];
+  Object.keys(BOARD_T).forEach(function(id){
+    if(!BUILTIN.some(function(b){ return b.id === id; })) out.push({id:id, g:'Board templates', n:BOARD_T[id].n, u:BOARD_T[id].u||[], k:BOARD_T[id].k||[], board:true});
+  });
+  out.sort(function(a,b){ return a.n.localeCompare(b.n); });
+  BUILTIN.forEach(function(b){
+    var o = BOARD_T[b.id];
+    out.push(o ? {id:b.id, g:b.g, n:o.n||b.n, u:o.u||[], k:o.k||[], edited:true} : b);
+  });
+  return out;
+}
+function tplById(id){ var l = tplList(); for(var i=0;i<l.length;i++) if(l[i].id===id) return l[i]; return null; }
+function resolveAnchor(spec){
+  var T = today(), m = /^f:([mw])(\d+)$/.exec(spec||'');
+  if(!m) return null;
+  /* next occurrence on or after today, so a new task never starts overdue */
+  if(m[1]==='m'){ var day = Math.min(+m[2], 28), d = new Date(T.getFullYear(), T.getMonth(), day); if(d < T) d = new Date(T.getFullYear(), T.getMonth()+1, day); return ymd(d); }
+  var wd = +m[2] % 7, fwd = (wd - T.getDay() + 7) % 7; return ymd(addD(T, fwd));
+}
+function taskFromTuple(r){
+  var k = {i:newId(), n:String(r[0]||'Task'), ev:r[1]||'1w', w:+r[2]||3, md:'l', c:ymd(today())};
+  if(r[3]==='u') k.ap = 'u';
+  if(r[4]) k.rd = r[4];
+  if(r[5]) k.ow = r[5];
+  if(r[6] && r[6].indexOf('f:')===0){ k.md = 'f'; k.an = resolveAnchor(r[6]); }
+  else if(r[6] && /^f\d{4}/.test(r[6])){ k.md = 'f'; k.an = r[6].slice(1); }
+  return k;
+}
+function tupleFromTask(k){
+  var sched = k.md==='f' ? 'f' + (k.an||'') : '';
+  var r = [k.n, k.ev, k.w, k.ap==='u'?'u':'', k.rd||'', k.ow||'', sched];
+  while(r.length > 3 && !r[r.length-1]) r.pop();
+  return r;
+}
+function applyTemplate(tp){
+  (tp.u||[]).forEach(function(u){ if(S.u.indexOf(u) < 0) S.u.push(u); });
+  (tp.k||[]).forEach(function(r){ S.k.push(Array.isArray(r) ? taskFromTuple(r) : taskFromTuple(tupleFromTask(r))); });
+}
+
+/* ----- persistence --------------------------------------------------------
+   Card: t.set('card','shared',{mnt}) direct AND relayed over BroadcastChannel to
+   the connector (which outlives dying iframes; duplicate writes are idempotent).
+   Board templates: t.set('board','shared','mntT').                          */
+var _saveTimer = null, _bc = null, SAVE_DELAY = 800;
+function bc(){ try{ if(!_bc) _bc = new BroadcastChannel(BC_NAME); }catch(e){} return _bc; }
+function relay(type, data){ try{ var c = bc(); if(c) c.postMessage({type:type, data:data}); }catch(e){} }
+function saveChip(txt, err){ var c = $('saveChip'); if(!c) return; if(!txt){ c.hidden = true; return; } c.hidden = false; c.textContent = txt; c.className = 'savechip' + (err ? ' err' : ''); }
+function saveNow(){
+  clearTimeout(_saveTimer); _saveTimer = null;
+  var payload = {mnt: clone(S)};
+  if(_sim){ try{ localStorage.setItem('tf-maintain-card', JSON.stringify(payload.mnt)); }catch(e){} saveChip('Saved'); setTimeout(function(){ saveChip(''); }, 1500); return; }
+  if(_view === 'summary') relay('save', payload);
+  if(!_t) return;
+  try{
+    var p = _t.set('card','shared', payload);
+    if(p && p.then) p.then(function(){ saveChip('Saved'); setTimeout(function(){ saveChip(''); }, 1500); },
+                          function(){ relay('save', payload); saveChip('Saved via relay'); });
+  }catch(e){ relay('save', payload); }
+}
+function saveSoon(delay){
+  if(!_ready) return;
+  clearTimeout(_saveTimer); saveChip('Saving…');
+  _saveTimer = setTimeout(saveNow, delay == null ? SAVE_DELAY : delay);
+}
+['pagehide','beforeunload'].forEach(function(ev){
+  window.addEventListener(ev, function(){ if(_saveTimer){ relay('save', {mnt:clone(S)}); saveNow(); } });
+});
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'hidden' && _saveTimer){ relay('save', {mnt:clone(S)}); saveNow(); }
+});
+function saveBoardT(){
+  var s = JSON.stringify(BOARD_T);
+  if(s.length > CONFIG.TPL_BYTES) return false;
+  if(_sim){ try{ localStorage.setItem('tf-maintain-board', s); }catch(e){} return true; }
+  try{
+    var p = _t.set('board','shared','mntT', BOARD_T);
+    if(p && p.then) p.then(null, function(){ relay('saveT', BOARD_T); });
+  }catch(e){ relay('saveT', BOARD_T); }
+  return true;
+}
+
+/* ----- REST (comments, dashboard, copy-from-card) ------------------------- */
+function restConfigured(){ return !!(CONFIG.APP_KEY && _t && _t.getRestApi); }
+function restAuthorized(){
+  if(!restConfigured()) return Promise.resolve(false);
+  try{ return _t.getRestApi().isAuthorized().catch(function(){ return false; }); }catch(e){ return Promise.resolve(false); }
+}
+function restAuthorize(){
+  try{ return _t.getRestApi().authorize({scope:'read,write', expiration:'never'}); }catch(e){ return Promise.reject(e); }
+}
+function restCall(t, method, path, params){
+  return t.getRestApi().getToken().then(function(tok){
+    if(!tok) throw new Error('not authorized');
+    var q = 'key=' + encodeURIComponent(CONFIG.APP_KEY) + '&token=' + encodeURIComponent(tok);
+    Object.keys(params||{}).forEach(function(k){ q += '&' + k + '=' + encodeURIComponent(params[k]); });
+    return fetch('https://api.trello.com/1' + path + (path.indexOf('?')<0 ? '?' : '&') + q, {method:method});
+  }).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+}
+function mntFromPluginData(pd){
+  var found = null;
+  (pd||[]).forEach(function(x){ try{ var v = JSON.parse(x.value); if(v && v.mnt && v.mnt.v === 1) found = v.mnt; }catch(e){} });
+  return found;
+}
+function fetchBoardCards(){
+  var board = _t.getContext().board;
+  return restCall(_t, 'GET', '/boards/' + board + '/cards', {fields:'name,closed,shortLink', pluginData:'true'})
+    .then(function(cards){ return cards.filter(function(c){ return !c.closed; }).map(function(c){ return {id:c.id, name:c.name, mnt:mntFromPluginData(c.pluginData)}; }); });
+}
+
+/* ===================== card face (summary) ===================== */
+var _toastTimer = null;
+function svToast(msg){ var el = $('svToast'); if(!el) return; el.textContent = msg || ''; clearTimeout(_toastTimer); if(msg) _toastTimer = setTimeout(function(){ el.textContent = ''; sizeFace(); }, 4000); sizeFace(); }
+function sizeFace(){ try{ if(_t && _t.sizeTo) _t.sizeTo('#summaryView'); }catch(e){} }
+function ownTag(k){ return k.ow ? ' · ' + esc(k.ow) : ''; }
+function svTaskRow(k, st, dt){
+  var per = isPerUnit(k, S.u), cls = (st.st==='up' ? 'done' : st.st);
+  var meta;
+  if(st.st === 'over') meta = '<b>Overdue</b> · was due ' + fmtS(st.due);
+  else if(st.st === 'due') meta = '<b>Due by ' + fmtL(st.due) + '</b>';
+  else meta = 'Done today · next opens ' + fmtS(st.open);
+  meta += ' · ' + evText(k.ev).toLowerCase() + ownTag(k);
+  var h = '<div class="sv-t ' + cls + '"><button class="sv-chk" data-a="chk" data-k="' + k.i + '" aria-label="' + (st.st==='up' ? 'Undo today' : 'Mark done') + '">' + IC.check + '</button><div>';
+  h += '<div class="sv-n">' + esc(k.n) + (per && st.st!=='up' ? ' <span class="hint">' + st.doneN + '/' + st.total + '</span>' : '') + '</div><div class="sv-m">' + meta + '</div>';
+  if(per && st.st !== 'up'){
+    h += '<div class="sv-u">' + st.units.map(function(us){
+      var on = us.st === 'up';
+      return '<button class="sv-uc' + (on ? ' on' : (us.st==='over' ? ' over' : '')) + '" data-a="unit" data-k="' + k.i + '" data-u="' + esc(us.u) + '"' + (on ? ' title="Done; next opens ' + fmtS(us.open) + '"' : '') + '>' + (on ? IC.check : '') + esc(us.u) + '</button>';
+    }).join('') + '</div>';
+  }
+  h += '</div><div class="sv-a"><button class="sv-ic" data-a="note" data-k="' + k.i + '" title="Log with note or reading">' + IC.note + '</button><button class="sv-ic" data-a="flag" data-k="' + k.i + '" title="Flag an issue">' + IC.flag + '</button></div></div>';
+  return h;
+}
+function renderSummary(){
+  var body = $('svBody'); if(!body) return;
+  if(!hasRoutine(S)){
+    body.innerHTML = '<div class="sv-empty"><span>No maintenance routine</span><button class="sv-btn" data-a="add">Add routine…</button></div>';
+    return;
+  }
+  var T = today(), over = [], due = [], done = [], up = [];
+  S.k.forEach(function(k){
+    var st = statusOf(k, S.u, T), dt = doneToday(k), row = {k:k, st:st, dt:dt};
+    if(st.st === 'over') over.push(row); else if(st.st === 'due') due.push(row);
+    else if(dt.any) done.push(row); else up.push(row);
+  });
+  var byDue = function(a,b){ return a.st.due - b.st.due; };
+  over.sort(byDue); due.sort(byDue); up.sort(function(a,b){ return a.st.open - b.st.open; });
+  var h = '<div class="sv-box">';
+  if(S.fl.length){
+    h += '<div class="sv-g over">Open issues</div>';
+    S.fl.forEach(function(f){
+      var k = taskById(f.k), d = new Date(f.d*1000);
+      h += '<div class="sv-f">' + IC.flag + '<div><div class="sv-n">' + esc(taskLabel(k, f.u)) + '</div><div class="sv-m">Flagged' + (f.by ? ' by ' + esc(f.by) : '') + ', ' + fmtS(d) + (f.nt ? ' · ' + esc(f.nt) : '') + '</div></div><button class="sv-btn" data-a="clear" data-f="' + esc(f.i) + '">Clear</button></div>';
+    });
+  }
+  if(over.length) h += '<div class="sv-g over">Overdue</div>' + over.map(function(r){ return svTaskRow(r.k, r.st, r.dt); }).join('');
+  if(due.length)  h += '<div class="sv-g due">Due now</div>' + due.map(function(r){ return svTaskRow(r.k, r.st, r.dt); }).join('');
+  if(done.length) h += '<div class="sv-g">Done today</div>' + done.map(function(r){ return svTaskRow(r.k, r.st, r.dt); }).join('');
+  if(!over.length && !due.length && !done.length) h += '<div class="sv-none">Nothing due</div>';
+  if(up.length){
+    h += '<div class="sv-up">' + up.length + ' upcoming · next: ' + up.slice(0,2).map(function(r){ return esc(r.k.n) + ' (' + fmtS(r.st.open) + ')'; }).join(', ') + (up.length > 2 ? '…' : '') + '</div>';
+  }
+  h += '</div>';
+  body.innerHTML = h;
+}
+function openEditor(params){
+  var url = SELF + '?view=editor' + (params || '');
+  saveNow();
+  try{ _t.modal({url:url, fullscreen:false, height:1100, title:'', accentColor:'#242528'}); }
+  catch(e){ relay('open', url); }
+}
+function onSummaryClick(e){
+  var b = e.target.closest('[data-a]'); if(!b) return;
+  var a = b.getAttribute('data-a'), k = taskById(b.getAttribute('data-k')), msg = '';
+  if(a === 'add'){ openEditor(''); return; }
+  if(a === 'note' && k){ openEditor('&task=' + encodeURIComponent(k.i) + '&do=log'); return; }
+  var ok = mutate(function(){
+    if(a === 'chk' && k){
+      var st = statusOf(k, S.u);
+      if(st.st === 'up'){ if(undoToday(k)) msg = 'Undone: ' + k.n; }
+      else if(isPerUnit(k, S.u)){
+        var dueU = st.units.filter(function(u){ return u.st !== 'up'; }).map(function(u){ return u.u; });
+        logDone(k, dueU); msg = 'Logged: ' + k.n + ' (' + dueU.join(', ') + '). Tap again to undo.';
+      } else { logDone(k, null); msg = 'Logged: ' + k.n + '. Tap again to undo.'; }
+    } else if(a === 'unit' && k){
+      var u = b.getAttribute('data-u'), us = slotStatus(k, (k.lu||{})[u], today());
+      if(us.st === 'up'){
+        if(doneToday(k).units[u]){ undoToday(k, u); msg = 'Undone: ' + u; }
+        else msg = u + ' is done; next opens ' + fmtS(us.open) + '.';
+      } else { logDone(k, [u]); msg = 'Logged: ' + k.n + ' on ' + u + '.'; }
+    } else if(a === 'flag' && k){
+      addFlag(k, null, ''); msg = 'Issue flagged. A comment will be posted on this card; add details in the comment or the expanded view.';
+    } else if(a === 'clear'){
+      clearFlag(b.getAttribute('data-f')); msg = 'Issue cleared.';
+    }
+  });
+  if(ok){ renderSummary(); saveSoon(500); }
+  svToast(msg);
+}
+function initSummary(){
+  _view = 'summary';
+  try{ _t = window._t = window.TrelloPowerUp.iframe(); }catch(e){ _t = null; }
+  _warnFn = function(m){ svToast(m); };
+  applyTheme(_t); [150,500,1200,2500].forEach(function(ms){ setTimeout(function(){ applyTheme(_t); }, ms); });
+  $('svBody').addEventListener('click', onSummaryClick);
+  var finish = function(){ _ready = true; renderSummary(); sizeFace(); };
+  var dp = getParam('d');
+  if(dp){
+    try{ var o = JSON.parse(dp); S = norm(o.m); _qh = +o.q || 0; _member = o.n || ''; finish(); }
+    catch(e){ dp = null; }
+  }
+  if(!dp){
+    try{ _t.get('card','shared').then(function(all){ all = all || {}; S = norm(all.mnt); _qh = (all.mntq && all.mntq.h) || 0; finish(); }, finish); }catch(e){}
+    setTimeout(finish, 2500);
+  }
+  if(!_member){ try{ _t.member('fullName','username').then(function(m){ _member = memberTagFrom(m) || ''; }); }catch(e){} }
+  [400,1000,2000].forEach(function(ms){ setTimeout(sizeFace, ms); });
+}
+
+/* height estimate for the face iframe (the face's own sizeTo may not work) */
+function estimateFaceHeight(m){
+  if(!hasRoutine(m)) return 44;
+  var T = today(), h = 16, groups = 0, rows = 0, chipRows = 0, anyDone = false, upcoming = 0;
+  var saveS = S; S = norm(m);
+  S.k.forEach(function(k){
+    var st = statusOf(k, S.u, T);
+    if(st.st !== 'up'){ rows++; if(isPerUnit(k, S.u)) chipRows += Math.ceil(S.u.length / 4); }
+    else if(doneToday(k).any){ rows++; anyDone = true; }
+    else upcoming++;
+  });
+  var c = cardCounts(m, T);
+  groups = (c.over?1:0) + (c.due?1:0) + (anyDone?1:0) + (S.fl.length?1:0);
+  S = saveS;
+  h += groups * 26 + rows * 46 + chipRows * 26 + (m.fl||[]).length * 46;
+  if(!rows) h += 30;
+  if(upcoming) h += 30;
+  return Math.min(720, h + 34);
+}
+
+/* ===================== editor ===================== */
+var E = {open:null, mode:'', pick:null, picker:false, confirmRm:false, saveTpl:false, copyCards:null, copyErr:'', members:[], auth:null};
+function warn(msg){ var w = $('warn'); if(!w) return; if(!msg){ w.hidden = true; return; } w.hidden = false; w.textContent = msg; clearTimeout(warn._t); warn._t = setTimeout(function(){ w.hidden = true; }, 9000); }
+function updateCap(){
+  var b = stateBytes(), pct = Math.min(100, Math.round(b / CONFIG.MAX_BYTES * 100));
+  var f = $('capFill'); if(f){ f.style.width = pct + '%'; f.className = 'capfill' + (pct >= 85 ? ' warn' : ''); }
+  var tx = $('capTxt'); if(tx) tx.textContent = pct + '%';
+}
+function segHtml(id, opts, val, attrs){
+  return '<div class="seg" id="' + id + '">' + opts.map(function(o){ return '<button type="button" data-v="' + esc(o[0]) + '" aria-pressed="' + (o[0]===val) + '"' + (o[2] ? ' disabled' : '') + ' ' + (attrs||'') + '>' + esc(o[1]) + '</button>'; }).join('') + '</div>';
+}
+function renderSite(){ $('siteSeg').innerHTML = SITES.map(function(s){ return '<button type="button" data-v="' + s[0] + '" aria-pressed="' + (S.s===s[0]) + '">' + s[1] + '</button>'; }).join(''); }
+function ownerOptions(cur){
+  var opts = [['', 'Anyone']];
+  CONFIG.ROLES.forEach(function(r){ opts.push([r, r + 's (role)']); });
+  var people = E.members.slice(); if(_member && people.indexOf(_member) < 0) people.push(_member);
+  if(cur && CONFIG.ROLES.indexOf(cur) < 0 && people.indexOf(cur) < 0) people.push(cur);
+  people.sort().forEach(function(p){ opts.push([p, p]); });
+  return opts.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (o[0]===(cur||'') ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('');
+}
+function schedText(k){
+  var s = evText(k.ev) + ', ' + k.w + ' workday' + (k.w===1?'':'s') + ' to finish';
+  if(k.md === 'f') s += ', fixed from ' + fmtS(pYmd(k.an));
+  return s;
+}
+function statusPill(st){
+  if(st.st === 'over') return '<span class="pill over">Overdue</span>';
+  if(st.st === 'due') return '<span class="pill due">Due</span>';
+  return '<span class="pill" title="Next opens ' + fmtL(st.open) + '">Next ' + MO[st.open.getMonth()] + ' ' + st.open.getDate() + '</span>';
+}
+function taskEditForm(k){
+  var e = parseEv(k.ev), per = k.ap === 'u';
+  var h = '<div class="tform" data-k="' + k.i + '">';
+  h += '<div class="fl"><label for="f_n">Task</label><input class="fin" id="f_n" data-f="n" maxlength="80" value="' + esc(k.n) + '"></div>';
+  h += '<div class="grid">';
+  h += '<div class="fl"><span class="lb">Schedule</span>' + segHtml('f_md', [['l','From last done'],['f','Fixed']], k.md||'l', 'data-f="md"') + '</div>';
+  h += '<div class="fl"><label for="f_evn">Repeats every</label><div class="inl"><input class="fin num" id="f_evn" type="number" min="1" max="365" data-f="evn" value="' + e.n + '"><select class="fin" id="f_evu" data-f="evu">' + [['d','days'],['w','weeks'],['m','months']].map(function(o){ return '<option value="' + o[0] + '"' + (o[0]===e.u?' selected':'') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>';
+  h += '<div class="fl"><label for="f_w">Window (workdays)</label><input class="fin num" id="f_w" type="number" min="1" max="60" data-f="w" value="' + (k.w||3) + '"></div>';
+  if(k.md === 'f') h += '<div class="fl"><label for="f_an">First due</label><input class="fin" id="f_an" type="date" data-f="an" value="' + esc(k.an||'') + '"></div>';
+  h += '</div><div class="grid">';
+  h += '<div class="fl"><span class="lb">Applies to</span>' + segHtml('f_ap', [['', S.u.length ? 'Whole fleet' : 'Machine'],['u','Each unit', !S.u.length]], per?'u':'', 'data-f="ap"') + (!S.u.length ? '<span class="hint">Add units below to track per unit.</span>' : '') + '</div>';
+  h += '<div class="fl"><label for="f_ow">Owner</label><select class="fin" id="f_ow" data-f="ow">' + ownerOptions(k.ow) + '</select></div>';
+  h += '<div class="fl"><label for="f_rd">Reading (optional)</label><input class="fin" id="f_rd" data-f="rd" maxlength="16" placeholder="e.g. % Brix, psi" value="' + esc(k.rd||'') + '"></div>';
+  if(!(per && S.u.length)) h += '<div class="fl"><label for="f_ld">Last done</label><input class="fin" id="f_ld" type="date" data-f="ld" value="' + esc(k.ld||'') + '"></div>';
+  h += '</div>';
+  if(per && S.u.length){
+    h += '<div class="fl"><span class="lb">Last done, per unit</span><div class="ulist">' + S.u.map(function(u){
+      return '<div class="inl"><span>' + esc(u) + '</span><input class="fin" type="date" data-f="lu" data-u="' + esc(u) + '" aria-label="Last done ' + esc(u) + '" value="' + esc((k.lu||{})[u]||'') + '"></div>';
+    }).join('') + '</div></div>';
+  }
+  h += '<div class="btnrow"><button class="btn" data-a="close">Done</button><span style="flex:1"></span><button class="btn danger" data-a="del" data-k="' + k.i + '">Delete task</button></div>';
+  return h + '</div>';
+}
+function taskLogForm(k){
+  var st = statusOf(k, S.u), per = isPerUnit(k, S.u);
+  var h = '<div class="tform" data-k="' + k.i + '" data-log="1">';
+  if(per){
+    var pre = st.units.filter(function(u){ return u.st !== 'up'; }).map(function(u){ return u.u; });
+    if(!pre.length) pre = S.u.slice();
+    h += '<div class="fl"><span class="lb">Units</span><div class="chips" id="lgUnits">' + S.u.map(function(u){ return '<button type="button" class="pick" data-u="' + esc(u) + '" aria-pressed="' + (pre.indexOf(u) >= 0) + '">' + esc(u) + '</button>'; }).join('') + '</div></div>';
+  }
+  h += '<div class="grid">';
+  h += '<div class="fl"><label for="lgDate">Done on</label><input class="fin" id="lgDate" type="date" max="' + ymd(today()) + '" value="' + ymd(today()) + '"></div>';
+  if(k.rd) h += '<div class="fl"><label for="lgRead">Reading (' + esc(k.rd) + ', optional)</label><input class="fin num" id="lgRead" maxlength="24"></div>';
+  h += '</div>';
+  h += '<div class="fl"><label for="lgNote">Note (optional)</label><input class="fin" id="lgNote" maxlength="' + CONFIG.NOTE_MAX + '" placeholder="e.g. replaced wiper blade, low on IPA"></div>';
+  h += '<label class="chk-l"><input type="checkbox" id="lgFlag"> Problem found: flag it and post a comment on the card</label>';
+  h += '<div class="btnrow"><button class="btn pri" data-a="dolog" data-k="' + k.i + '">Log completion</button><button class="btn ghost" data-a="close">Cancel</button></div>';
+  return h + '</div>';
+}
+function renderRoutine(){
+  var T = today(), h = '';
+  // units
+  h += '<div class="sec"><div class="sec-h"><span class="sec-t">Units</span><span class="aside">For fleet cards: tasks can be tracked per unit</span></div>';
+  h += '<div class="chips">' + S.u.map(function(u){ return '<span class="uchip">' + esc(u) + '<button data-a="rmunit" data-u="' + esc(u) + '" aria-label="Remove ' + esc(u) + '">×</button></span>'; }).join('') + '</div>';
+  h += '<div class="inl" style="margin-top:6px; max-width:340px"><input class="fin" id="newUnit" maxlength="32" placeholder="Add a unit, e.g. Bambu X1C #3"><button class="btn" data-a="addunit">Add</button></div></div>';
+  // tasks
+  var rows = S.k.map(function(k){ return {k:k, st:statusOf(k, S.u, T)}; });
+  var c = cardCounts(S, T);
+  h += '<div class="sec"><div class="sec-h"><span class="sec-t">Tasks</span><span class="aside">' + S.k.length + ' tasks' + (c.over ? ' · ' + c.over + ' overdue' : '') + (c.due ? ' · ' + c.due + ' due' : '') + '</span></div><div class="tasks">';
+  rows.forEach(function(r){
+    var k = r.k, per = isPerUnit(k, S.u);
+    h += '<div class="trow" id="row_' + k.i + '"><div class="tline"><div>' + statusPill(r.st) + '</div><div><div class="tname">' + esc(k.n) + (k.ow ? ' <span class="pill own">' + esc(k.ow) + '</span>' : '') + '</div>';
+    h += '<div class="tsub">' + esc(schedText(k)) + ' · ' + (per ? 'each unit (' + r.st.doneN + '/' + r.st.total + ' done)' : (S.u.length ? 'whole fleet' : 'machine')) + (k.rd ? ' · reading ' + esc(k.rd) : '');
+    if(r.st.st !== 'up') h += ' · due by ' + fmtS(r.st.due);
+    h += '</div></div><div class="tbtns"><button class="btn" data-a="log" data-k="' + k.i + '">Log</button><button class="btn ghost" data-a="edit" data-k="' + k.i + '">Edit</button></div></div>';
+    if(E.open === k.i) h += E.mode === 'log' ? taskLogForm(k) : taskEditForm(k);
+    h += '</div>';
+  });
+  h += '</div><div class="btnrow" style="margin-top:8px"><button class="btn" data-a="addtask">+ Add task</button><button class="btn ghost" data-a="picker">Add tasks from a template…</button></div></div>';
+  // flags
+  if(S.fl.length){
+    h += '<div class="sec"><div class="sec-h"><span class="sec-t">Open issues</span></div>';
+    S.fl.forEach(function(f){
+      h += '<div class="flagrow">' + IC.flag + '<div class="fx"><b>' + esc(taskLabel(taskById(f.k), f.u)) + '</b><div class="hint">Flagged' + (f.by ? ' by ' + esc(f.by) : '') + ', ' + fmtS(new Date(f.d*1000)) + (f.nt ? ': ' + esc(f.nt) : '') + '</div></div><button class="btn" data-a="clearflag" data-f="' + esc(f.i) + '">Clear</button></div>';
+    });
+    h += '</div>';
+  }
+  // history
+  h += '<div class="sec"><div class="sec-h"><span class="sec-t">History</span><span class="aside">Last ' + S.h.length + ' on the card; older entries are archived to card comments</span></div><div class="hist">';
+  if(!S.h.length) h += '<div class="hint">Nothing logged yet.</div>';
+  S.h.slice().reverse().slice(0, 25).forEach(function(e){
+    var k = taskById(e.k);
+    h += '<div class="hrow"><span class="hd">' + fmtS(dateOfEntry(e)) + '</span><span class="hx">' + esc(taskLabel(k, e.u)) + (e.r ? ' · ' + esc(e.r) + (k && k.rd ? ' ' + esc(k.rd) : '') : '') + (e.nt ? ' · <i>' + esc(e.nt) + '</i>' : '') + (e.f ? ' · <b style="color:var(--amber)">issue</b>' : '') + '</span><span class="hb">' + esc(e.by||'') + '</span></div>';
+  });
+  h += '</div>' + commentStatusHtml() + '</div>';
+  // footer
+  h += '<div class="sec btnrow">';
+  if(E.saveTpl){
+    h += '<input class="fin" id="tplName" maxlength="48" style="max-width:260px" placeholder="Template name" value="' + esc(E.saveTplName||'') + '"><button class="btn pri" data-a="dosavetpl">Save board template</button><button class="btn ghost" data-a="cancelsavetpl">Cancel</button><span class="hint" id="tplHint"></span>';
+  } else {
+    h += '<button class="btn" data-a="savetpl">Save as board template…</button><span style="flex:1"></span>';
+    h += E.confirmRm ? '<button class="btn danger" data-a="rmroutine2">Tap again to remove all tasks and history</button>' : '<button class="btn ghost" data-a="rmroutine">Remove routine</button>';
+  }
+  h += '</div>';
+  return h;
+}
+function commentStatusHtml(){
+  var n = S.q.length;
+  var h = '<div class="hint" style="margin-top:8px">';
+  if(n) h += n + ' comment' + (n>1?'s':'') + ' waiting to be posted. ';
+  if(!CONFIG.APP_KEY){ h += n ? 'Trello comments need a one-time API key setup in the Power-Up (see the TF-Maintain notes).' : ''; }
+  else if(E.auth === false) h += '<button class="lnk" data-a="authorize">Authorize TF-Maintain</button> so issues and archives can post as comments.';
+  else if(n) h += 'They post the next time the card is viewed.';
+  return h + '</div>';
+}
+function renderPicker(){
+  var list = tplList();
+  if(!E.pick) E.pick = list.length ? list[0].id : 'blank';
+  var h = '<div class="sec"><div class="sec-h"><span class="sec-t">' + (hasRoutine(S) ? 'Add tasks from a template' : 'Add a maintenance routine') + '</span>' + (hasRoutine(S) ? '<button class="btn ghost" data-a="closepicker" style="margin-left:auto">Back to routine</button>' : '') + '</div><div class="picker"><div class="tpls">';
+  var g = null;
+  list.forEach(function(t){
+    if(t.g !== g){ g = t.g; h += '<div class="g">' + esc(g) + '</div>'; }
+    h += '<button class="tpl" data-a="pick" data-t="' + esc(t.id) + '" aria-pressed="' + (E.pick===t.id) + '"><span>' + esc(t.n) + (t.edited ? ' •' : '') + '</span><small>' + t.k.length + '</small></button>';
+  });
+  h += '<div class="g">Other</div><button class="tpl" data-a="pick" data-t="copy" aria-pressed="' + (E.pick==='copy') + '"><span>Copy from another card</span></button>';
+  if(!hasRoutine(S)) h += '<button class="tpl" data-a="pick" data-t="blank" aria-pressed="' + (E.pick==='blank') + '"><span>Start from scratch</span></button>';
+  h += '</div><div class="prev">' + pickerPreview() + '</div></div></div>';
+  return h;
+}
+function tplTable(units, tasks){
+  var h = '';
+  if(units.length) h += '<div class="chips">' + units.map(function(u){ return '<span class="uchip" style="padding-right:10px">' + esc(u) + '</span>'; }).join('') + '</div>';
+  h += '<div class="tblw"><table><thead><tr><th>Task</th><th>Repeats</th><th>Window</th><th>Applies to</th><th>Owner</th><th>Reading</th></tr></thead><tbody>';
+  tasks.forEach(function(r){
+    var k = Array.isArray(r) ? r : tupleFromTask(r);
+    h += '<tr><td>' + esc(k[0]) + '</td><td class="nw">' + evText(k[1]) + (k[6] ? ' (fixed)' : '') + '</td><td class="nw">' + k[2] + ' workdays</td><td class="nw">' + (k[3]==='u' ? 'Each unit' : (units.length ? 'Whole fleet' : 'Machine')) + '</td><td class="nw">' + esc(k[5]||'Anyone') + '</td><td class="nw">' + esc(k[4]||'') + '</td></tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+function pickerPreview(){
+  if(E.pick === 'blank'){
+    return '<h3>Start from scratch</h3><div class="hint">An empty routine. Add tasks one at a time: name, schedule, window, owner, optional reading.</div><div class="btnrow"><button class="btn pri" data-a="startblank">Start routine</button></div>';
+  }
+  if(E.pick === 'copy'){
+    var h = '<h3>Copy from another card</h3>';
+    if(!CONFIG.APP_KEY) return h + '<div class="hint">Copying from another card reads the board through Trello\'s REST API, which needs a one-time API key setup for the Power-Up.</div>';
+    if(_sim) return h + '<div class="hint">Available inside Trello.</div>';
+    if(E.auth === false) return h + '<div class="hint">TF-Maintain needs your permission to read this board.</div><div class="btnrow"><button class="btn pri" data-a="authorize">Authorize TF-Maintain</button></div>';
+    if(E.copyErr) return h + '<div class="hint">' + esc(E.copyErr) + '</div>';
+    if(!E.copyCards){ loadCopyCards(); return h + '<div class="hint">Loading cards…</div>'; }
+    var me = _t && _t.getContext ? _t.getContext().card : '';
+    var cs = E.copyCards.filter(function(c){ return c.id !== me && hasRoutine(c.mnt); });
+    if(!cs.length) return h + '<div class="hint">No other cards on this board have a routine yet.</div>';
+    return h + '<div class="hint">Copies the units and task definitions (not history or completion dates).</div><div class="tpls">' + cs.map(function(c){ return '<button class="tpl" data-a="copyfrom" data-c="' + esc(c.id) + '"><span>' + esc(c.name) + '</span><small>' + c.mnt.k.length + ' tasks</small></button>'; }).join('') + '</div>';
+  }
+  var t = tplById(E.pick); if(!t) return '';
+  var h2 = '<h3>' + esc(t.n) + '</h3><div class="hint">' + (t.board ? 'Board template' : t.edited ? 'Built-in, edited for this board' : 'Built-in starting point; intervals are defaults to adjust') + '. Everything stays editable after it lands on the card.</div>';
+  h2 += tplTable(t.u||[], t.k||[]);
+  h2 += '<div class="btnrow"><button class="btn pri" data-a="apply" data-t="' + esc(t.id) + '">' + (hasRoutine(S) ? 'Add these tasks' : 'Add to card') + '</button>';
+  if(t.board) h2 += '<span style="flex:1"></span><button class="btn ghost" data-a="deltpl" data-t="' + esc(t.id) + '">Delete template</button>';
+  if(t.edited) h2 += '<span style="flex:1"></span><button class="btn ghost" data-a="reverttpl" data-t="' + esc(t.id) + '">Revert to built-in</button>';
+  return h2 + '</div>';
+}
+function loadCopyCards(){
+  fetchBoardCards().then(function(cs){ E.copyCards = cs; renderEditor(); }, function(e){ E.copyErr = 'Could not read the board (' + (e && e.message || 'error') + ').'; renderEditor(); });
+}
+function renderEditor(){
+  renderSite();
+  var body = $('edBody'); if(!body) return;
+  body.innerHTML = (!hasRoutine(S) && !E.started) || E.picker ? renderPicker() : renderRoutine();
+  updateCap();
+}
+function setTaskField(k, f, el){
+  var v = el.value;
+  if(f === 'n') k.n = v.trim() || 'Task';
+  else if(f === 'evn' || f === 'evu'){ var e = parseEv(k.ev), n = f==='evn' ? Math.max(1, Math.min(365, parseInt(v,10)||1)) : e.n, u = f==='evu' ? v : e.u; k.ev = n + u; }
+  else if(f === 'w') k.w = Math.max(1, Math.min(60, parseInt(v,10)||1));
+  else if(f === 'an'){ if(v) k.an = v; }
+  else if(f === 'ow'){ if(v) k.ow = v; else delete k.ow; }
+  else if(f === 'rd'){ v = v.trim(); if(v) k.rd = v; else delete k.rd; }
+  else if(f === 'ld'){ if(v) k.ld = v; else delete k.ld; }
+  else if(f === 'lu'){ var u2 = el.getAttribute('data-u'); k.lu = k.lu || {}; if(v) k.lu[u2] = v; else delete k.lu[u2]; }
+}
+function onEditorInput(e){
+  var el = e.target, f = el.getAttribute('data-f'); if(!f) return;
+  var form = el.closest('.tform'); if(!form) return;
+  var k = taskById(form.getAttribute('data-k')); if(!k) return;
+  if(mutate(function(){ setTaskField(k, f, el); })){ saveSoon(); updateCap(); if(e.type === 'change' && el.tagName === 'SELECT') renderEditorKeepFocus(el.id); }
+}
+function renderEditorKeepFocus(id){ renderEditor(); if(id){ var n = $(id); if(n){ try{ n.focus(); }catch(e){} } } }
+function onEditorClick(e){
+  var site = e.target.closest('#siteSeg button');
+  if(site){ if(mutate(function(){ S.s = site.getAttribute('data-v'); })){ saveSoon(); renderEditor(); } return; }
+  var segb = e.target.closest('.tform .seg button');
+  if(segb){
+    var form = segb.closest('.tform'), k0 = taskById(form.getAttribute('data-k')), f0 = segb.getAttribute('data-f'), v0 = segb.getAttribute('data-v');
+    if(k0 && mutate(function(){
+      if(f0 === 'md'){ k0.md = v0; if(v0 === 'f' && !k0.an) k0.an = ymd(today()); }
+      if(f0 === 'ap'){ if(v0 === 'u') k0.ap = 'u'; else delete k0.ap; }
+    })){ saveSoon(); renderEditor(); }
+    return;
+  }
+  var pk = e.target.closest('#lgUnits .pick');
+  if(pk){ pk.setAttribute('aria-pressed', pk.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); return; }
+  var b = e.target.closest('[data-a]'); if(!b) return;
+  var a = b.getAttribute('data-a'), k = taskById(b.getAttribute('data-k')), changed = false, ok = true;
+  switch(a){
+    case 'edit': E.open = (E.open === k.i && E.mode === 'edit') ? null : k.i; E.mode = 'edit'; break;
+    case 'log':  E.open = (E.open === k.i && E.mode === 'log') ? null : k.i; E.mode = 'log'; break;
+    case 'close': E.open = null; break;
+    case 'del': ok = mutate(function(){ S.k = S.k.filter(function(x){ return x.i !== k.i; }); S.fl = S.fl.filter(function(f){ return f.k !== k.i; }); }); changed = true; E.open = null; break;
+    case 'dolog':
+      var units = null;
+      if(isPerUnit(k, S.u)){ units = [].slice.call(document.querySelectorAll('#lgUnits .pick[aria-pressed="true"]')).map(function(x){ return x.getAttribute('data-u'); }); if(!units.length){ warn('Pick at least one unit.'); return; } }
+      var ex = { on: ($('lgDate')||{}).value || ymd(today()), nt: (($('lgNote')||{}).value||'').trim(), r: (($('lgRead')||{}).value||'').trim(), f: ($('lgFlag')||{}).checked };
+      if(ex.on > ymd(today())) ex.on = ymd(today());
+      ok = mutate(function(){ logDone(k, units, ex); }); changed = true; if(ok) E.open = null; break;
+    case 'addtask':
+      ok = mutate(function(){ var nk = {i:newId(), n:'New task', ev:'1w', w:3, md:'l', c:ymd(today())}; S.k.push(nk); E.open = nk.i; E.mode = 'edit'; }); changed = true; break;
+    case 'addunit':
+      var nu = ($('newUnit').value||'').trim();
+      if(nu && S.u.indexOf(nu) < 0){ ok = mutate(function(){ S.u.push(nu); }); changed = true; }
+      break;
+    case 'rmunit':
+      var ru = b.getAttribute('data-u');
+      ok = mutate(function(){ S.u = S.u.filter(function(u){ return u !== ru; }); S.k.forEach(function(x){ if(x.lu) delete x.lu[ru]; }); }); changed = true; break;
+    case 'clearflag': ok = mutate(function(){ clearFlag(b.getAttribute('data-f')); }); changed = true; break;
+    case 'picker': E.picker = true; break;
+    case 'closepicker': E.picker = false; break;
+    case 'pick': E.pick = b.getAttribute('data-t'); break;
+    case 'startblank': E.started = true; E.picker = false; break;
+    case 'apply':
+      var tp = tplById(b.getAttribute('data-t'));
+      ok = mutate(function(){ applyTemplate(tp); }); changed = true; if(ok){ E.picker = false; E.started = true; } break;
+    case 'copyfrom':
+      var src = (E.copyCards||[]).filter(function(c){ return c.id === b.getAttribute('data-c'); })[0];
+      if(src){ ok = mutate(function(){ applyTemplate({u:src.mnt.u||[], k:src.mnt.k}); if(!S.s && src.mnt.s) S.s = src.mnt.s; }); changed = true; if(ok){ E.picker = false; E.started = true; } }
+      break;
+    case 'deltpl': delete BOARD_T[b.getAttribute('data-t')]; saveBoardT(); E.pick = null; break;
+    case 'reverttpl': delete BOARD_T[b.getAttribute('data-t')]; saveBoardT(); break;
+    case 'savetpl': E.saveTpl = true; E.saveTplName = ''; break;
+    case 'cancelsavetpl': E.saveTpl = false; break;
+    case 'dosavetpl':
+      var nm = ($('tplName').value||'').trim(); if(!nm){ warn('Name the template first.'); return; }
+      var id = null, lower = nm.toLowerCase();
+      tplList().forEach(function(t){ if(t.n.toLowerCase() === lower) id = t.id; });
+      if(!id) id = 'c' + newId();
+      var prev = BOARD_T[id];
+      BOARD_T[id] = {n:nm, u:S.u.slice(), k:S.k.map(tupleFromTask)};
+      if(!saveBoardT()){ if(prev) BOARD_T[id] = prev; else delete BOARD_T[id]; warn('Board template storage is full (Trello allows about 4 KB per board). Delete a board template first.'); return; }
+      E.saveTpl = false; warn(''); saveChip('Template saved'); setTimeout(function(){ saveChip(''); }, 1800);
+      break;
+    case 'rmroutine': E.confirmRm = true; break;
+    case 'rmroutine2': ok = mutate(function(){ S.k = []; S.u = []; S.h = []; S.fl = []; }); changed = true; E.confirmRm = false; E.started = false; break;
+    case 'authorize': restAuthorize().then(function(){ E.auth = true; E.copyCards = null; renderEditor(); }, function(){}); return;
+    default: return;
+  }
+  if(a !== 'rmroutine') E.confirmRm = false;
+  if(changed && ok) saveSoon(a === 'dolog' ? 200 : null);
+  renderEditor();
+  if((a === 'edit' || a === 'log' || a === 'addtask') && E.open){ var r = $('row_' + E.open); if(r && r.scrollIntoView) r.scrollIntoView({block:'nearest'}); }
+}
+function initFullApp(){
+  _ready = true;
+  _warnFn = warn;
+  $('titleIcon').innerHTML = IC.wrench;
+  $('verInline').textContent = 'v' + VERSION;
+  $('app').addEventListener('click', onEditorClick);
+  $('app').addEventListener('input', onEditorInput);
+  $('app').addEventListener('change', onEditorInput);
+  $('app').addEventListener('keydown', function(e){ if(e.key === 'Enter' && e.target.id === 'newUnit'){ e.preventDefault(); var b = document.querySelector('[data-a="addunit"]'); if(b) b.click(); } });
+  var tk = getParam('task'), act = getParam('do');
+  if(tk && taskById(tk)){ E.open = tk; E.mode = act === 'log' ? 'log' : 'edit'; }
+  if(hasRoutine(S)) E.started = true;
+  renderEditor();
+  if(E.open){ setTimeout(function(){ var r = $('row_' + E.open); if(r && r.scrollIntoView) r.scrollIntoView({block:'center'}); var n = $('lgNote'); if(n) try{ n.focus({preventScroll:true}); }catch(e){} }, 60); }
+  restAuthorized().then(function(ok){ E.auth = restConfigured() ? ok : null; if(restConfigured()) renderEditor(); });
+}
+function initEditor(){
+  _view = 'editor';
+  try{ _t = window._t = window.TrelloPowerUp.iframe(); }catch(e){ _t = null; }
+  applyTheme(_t); [150,500,1500].forEach(function(ms){ setTimeout(function(){ applyTheme(_t); }, ms); });
+  var waits = [];
+  try{ waits.push(_t.member('fullName','username').then(function(m){ _member = memberTagFrom(m) || ''; }, function(){})); }catch(e){}
+  try{ waits.push(_t.get('card','shared').then(function(all){ all = all || {}; S = norm(all.mnt); _qh = (all.mntq && all.mntq.h) || 0; }, function(){})); }catch(e){}
+  try{ waits.push(_t.get('board','shared','mntT').then(function(v){ if(v && typeof v === 'object') BOARD_T = v; }, function(){})); }catch(e){}
+  try{ waits.push(_t.board('members').then(function(b){ E.members = ((b && b.members)||[]).map(memberTagFrom).filter(Boolean); }, function(){})); }catch(e){}
+  var go = false, start = function(){ if(go) return; go = true; initFullApp(); };
+  Promise.all(waits).then(start, start);
+  setTimeout(start, 3000);
+}
+
+/* ===================== dashboard ===================== */
+var D = {cards:null, err:'', site:'all', owner:'all', auth:null};
+function dashRows(){
+  var T = today(), rows = [];
+  (D.cards||[]).forEach(function(c){
+    var m = c.mnt; if(!hasRoutine(m)) return;
+    var site = m.s || '';
+    if(D.site !== 'all' && !(site === D.site || site === 'both')) return;
+    (m.fl||[]).forEach(function(f){
+      var k = null; m.k.forEach(function(x){ if(x.i === f.k) k = x; });
+      if(D.owner !== 'all' && (k && k.ow || '') !== D.owner) return;
+      rows.push({rank:3, c:c, site:site, st:'flag', name:taskLabel(k, f.u), ow:k && k.ow, when:new Date(f.d*1000), note:(f.by ? 'by ' + f.by : '') + (f.nt ? (f.by?': ':'') + f.nt : '')});
+    });
+    m.k.forEach(function(k){
+      var st = statusOf(k, m.u||[], T); if(st.st === 'up') return;
+      if(D.owner !== 'all' && (k.ow||'') !== D.owner) return;
+      var per = isPerUnit(k, m.u);
+      rows.push({rank:stRank(st.st), c:c, site:site, st:st.st, name:k.n + (per ? ' (' + st.doneN + '/' + st.total + ' units done)' : ''), ow:k.ow, when:st.due});
+    });
+  });
+  rows.sort(function(a,b){ return b.rank - a.rank || a.when - b.when; });
+  return rows;
+}
+function renderDash(){
+  var body = $('dashBody'); if(!body) return;
+  if(!D.cards){
+    var msg = D.err || 'Loading cards…';
+    if(!CONFIG.APP_KEY && !_sim) msg = 'The dashboard reads every card on the board through Trello\'s REST API. It needs a one-time setup: register an API key for TF-Maintain in the Trello Power-Up admin page and add it to the Power-Up file.';
+    body.innerHTML = '<div class="hint">' + esc(msg) + '</div>' + (D.auth === false ? '<div class="btnrow" style="margin-top:10px"><button class="btn pri" data-a="dauth">Authorize TF-Maintain</button></div>' : '');
+    return;
+  }
+  var owners = {};
+  D.cards.forEach(function(c){ if(c.mnt) (c.mnt.k||[]).forEach(function(k){ if(k.ow) owners[k.ow] = 1; }); });
+  CONFIG.ROLES.forEach(function(r){ owners[r] = 1; });
+  var rows = dashRows();
+  var no = rows.filter(function(r){ return r.st === 'over'; }).length, nd = rows.filter(function(r){ return r.st === 'due'; }).length, nf = rows.filter(function(r){ return r.st === 'flag'; }).length;
+  var h = '<div class="dfilters"><span class="dsum">' + no + ' overdue · ' + nd + ' due · ' + nf + ' open issue' + (nf===1?'':'s') + '</span><span style="flex:1"></span>';
+  h += '<div class="seg" id="dSite">' + [['all','All sites'],['davis','Davis'],['as','Aggie Square']].map(function(s){ return '<button data-v="' + s[0] + '" aria-pressed="' + (D.site===s[0]) + '">' + s[1] + '</button>'; }).join('') + '</div>';
+  h += '<select class="fin" id="dOwner" aria-label="Owner"><option value="all">All owners</option><option value=""' + (D.owner===''?' selected':'') + '>Anyone (unassigned)</option>' + Object.keys(owners).sort().map(function(o){ return '<option value="' + esc(o) + '"' + (D.owner===o?' selected':'') + '>' + esc(o) + '</option>'; }).join('') + '</select></div>';
+  h += '<div class="tblw"><table><thead><tr><th>Status</th><th>Task</th><th>Card</th><th>Site</th><th>Owner</th><th>Due by</th></tr></thead><tbody>';
+  if(!rows.length) h += '<tr><td colspan="6" class="hint">Nothing open.</td></tr>';
+  rows.forEach(function(r){
+    var pill = r.st === 'flag' ? '<span class="pill over">Issue</span>' : r.st === 'over' ? '<span class="pill over">Overdue</span>' : '<span class="pill due">Due</span>';
+    h += '<tr><td>' + pill + '</td><td>' + esc(r.name) + (r.note ? '<div class="hint">' + esc(r.note) + '</div>' : '') + '</td><td><button class="lnk" data-card="' + esc(r.c.id) + '">' + esc(r.c.name) + '</button></td><td class="nw">' + esc(siteName(r.site)) + '</td><td class="nw">' + esc(r.ow||'Anyone') + '</td><td class="nw">' + (r.st === 'flag' ? 'flagged ' + fmtS(r.when) : fmtS(r.when)) + '</td></tr>';
+  });
+  body.innerHTML = h + '</tbody></table></div>';
+}
+function loadDash(){
+  D.cards = null; D.err = ''; renderDash();
+  if(_sim){ D.cards = [{id:'local', name:'This browser\'s routine', mnt:S}]; renderDash(); return; }
+  if(!restConfigured()){ renderDash(); return; }
+  restAuthorized().then(function(ok){
+    D.auth = ok;
+    if(!ok){ D.err = 'TF-Maintain needs your permission to read this board.'; renderDash(); return; }
+    fetchBoardCards().then(function(cs){ D.cards = cs; renderDash(); }, function(e){ D.err = 'Could not read the board (' + (e && e.message || 'error') + ').'; renderDash(); });
+  });
+}
+function initDash(){
+  _view = 'dash';
+  if(window.TrelloPowerUp && window.self !== window.top){ try{ _t = window._t = window.TrelloPowerUp.iframe(); }catch(e){ _t = null; } }
+  else { _sim = true; try{ S = norm(JSON.parse(localStorage.getItem('tf-maintain-card')||'null')); }catch(e){} }
+  applyTheme(_t); [150,500,1500].forEach(function(ms){ setTimeout(function(){ applyTheme(_t); }, ms); });
+  $('dashIcon').innerHTML = IC.wrench; $('verDash').textContent = 'v' + VERSION;
+  $('dashView').addEventListener('click', function(e){
+    var s = e.target.closest('#dSite button'); if(s){ D.site = s.getAttribute('data-v'); renderDash(); return; }
+    var c = e.target.closest('[data-card]'); if(c){ try{ _t.showCard(c.getAttribute('data-card')); }catch(er){} return; }
+    if(e.target.closest('[data-a="dauth"]')){ restAuthorize().then(loadDash, function(){}); return; }
+    if(e.target.closest('#dashRefresh')) loadDash();
+  });
+  $('dashView').addEventListener('change', function(e){ if(e.target.id === 'dOwner'){ D.owner = e.target.value; renderDash(); } });
+  loadDash();
+}
+
+/* ===================== connector ===================== */
+var _lastCardT = null, _flushing = false;
+function flushQueue(t, m, qh){
+  if(_flushing || !CONFIG.APP_KEY || !m || !Array.isArray(m.q)) return Promise.resolve(qh);
+  var items = m.q.filter(function(x){ return x && x.i > qh; }).sort(function(a,b){ return a.i - b.i; });
+  if(!items.length) return Promise.resolve(qh);
+  _flushing = true;
+  var api; try{ api = t.getRestApi(); }catch(e){ _flushing = false; return Promise.resolve(qh); }
+  var card = t.getContext().card, h = qh;
+  return api.isAuthorized().then(function(ok){
+    if(!ok) return h;
+    var chain = Promise.resolve();
+    items.forEach(function(it){
+      chain = chain.then(function(){ return restCall(t, 'POST', '/cards/' + card + '/actions/comments', {text: it.x}).then(function(){ h = it.i; }); });
+    });
+    return chain.then(function(){ return h; }, function(){ return h; });
+  }).then(function(newH){
+    _flushing = false;
+    if(newH > qh) return t.set('card','shared','mntq', {h:newH}).then(function(){ return newH; }, function(){ return newH; });
+    return newH;
+  }, function(){ _flushing = false; return qh; });
+}
+function initConnector(){
+  _view = 'connector';
+  try{
+    var ch = new BroadcastChannel(BC_NAME);
+    ch.onmessage = function(ev){
+      var msg = ev && ev.data; if(!msg || !_lastCardT) return;
+      try{
+        if(msg.type === 'save') _lastCardT.set('card','shared', msg.data);
+        else if(msg.type === 'saveT') _lastCardT.set('board','shared','mntT', msg.data);
+        else if(msg.type === 'open') _lastCardT.modal({url:msg.data, fullscreen:false, height:1100, title:'', accentColor:'#242528'});
+      }catch(e){}
+    };
+  }catch(e){}
+  var opts = CONFIG.APP_KEY ? {appKey:CONFIG.APP_KEY, appName:CONFIG.APP_NAME, appAuthor:'UC Davis Tech Foundry'} : undefined;
+  window.TrelloPowerUp.initialize({
+    'card-badges': function(t){
+      return t.get('card','shared','mnt').then(function(m){ return badgesFor(m); }, function(){ return []; });
+    },
+    'card-back-section': function(t){
+      _lastCardT = t;
+      var read = Promise.all([
+        t.get('card','shared').catch(function(){ return {}; }),
+        t.member('fullName','username').catch(function(){ return null; })
+      ]).then(function(r){ return {all:r[0]||{}, m:r[1]}; });
+      var timeout = new Promise(function(res){ setTimeout(function(){ res(null); }, 1500); });
+      return Promise.race([read, timeout]).then(function(r){
+        var all = (r && r.all) || {}, m = all.mnt || null, qh = (all.mntq && all.mntq.h) || 0;
+        if(m) flushQueue(t, m, qh);
+        /* deterministic URL: identical data -> identical URL (no cache-buster) */
+        var d = JSON.stringify({m:m, q:qh, n:memberTagFrom(r && r.m) || ''});
+        var url = SELF + '?view=summary&d=' + encodeURIComponent(d);
+        return {
+          title: 'TF-Maintain v' + VERSION,
+          icon: TRELLO_ICON,
+          content: { type:'iframe', url:url, height: estimateFaceHeight(m) },
+          action: { text:'Open', callback: function(tt){ return tt.modal({url:SELF + '?view=editor', fullscreen:false, height:1100, title:'', accentColor:'#242528'}); } }
+        };
+      });
+    },
+    'board-buttons': function(){
+      return [{ icon:{dark:iconUri('#ffffff'), light:iconUri('#172b4d')}, text:'TF-Maintain',
+        callback: function(tt){ return tt.modal({url:SELF + '?view=dash', fullscreen:false, height:900, title:'TF-Maintain', accentColor:'#242528'}); } }];
+    }
+  }, opts);
+}
+
+/* ===================== theme, member, boot ===================== */
+function applyTheme(t){
+  var th = null;
+  try{ var c = t && t.getContext && t.getContext(); if(c && (c.theme === 'dark' || c.theme === 'light')) th = c.theme; }catch(e){}
+  if(!th){ var a = document.documentElement.getAttribute('data-color-mode'); if(a === 'dark' || a === 'light') th = a; }
+  if(!th && !t){ try{ th = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }catch(e){} }
+  document.documentElement.setAttribute('data-color-mode', th || 'dark');
+}
+function memberTagFrom(m){
+  var n = ((m && (m.fullName || m.username)) || '').trim();
+  if(!n) return null;
+  var p = n.split(/\s+/);
+  return p.length === 1 ? p[0] : p[0] + ' ' + p[p.length-1].charAt(0).toUpperCase() + '.';
+}
+function boot(){
+  var view = getParam('view'), framed = (window.self !== window.top), hasTrello = (typeof window.TrelloPowerUp !== 'undefined');
+  if(view === 'dash'){ initDash(); return; }
+  if(hasTrello && framed && view === 'summary'){ initSummary(); return; }
+  if(hasTrello && framed && view === 'editor'){ initEditor(); return; }
+  if(hasTrello && framed && !view){ initConnector(); return; }
+  document.documentElement.className = 'v-standalone';
+  _sim = true; _view = 'standalone'; _member = 'You';
+  applyTheme(null);
+  try{ S = norm(JSON.parse(localStorage.getItem('tf-maintain-card')||'null')); }catch(e){}
+  try{ var bt = JSON.parse(localStorage.getItem('tf-maintain-board')||'null'); if(bt) BOARD_T = bt; }catch(e){}
+  initFullApp();
+}
+boot();
+</script>
+</body>
+</html>
