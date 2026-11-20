@@ -243,12 +243,12 @@
    - standalone : file opened directly -> editor with browser-local storage.
 ============================================================================ */
 var SELF = location.origin + location.pathname;
-var VERSION = '0.1';
+var VERSION = '0.2';
 var CONFIG = {
   /* Trello API key from trello.com/power-ups/admin -> TF-Maintain -> API key.
      Empty = no REST: issue comments and history archives stay queued on the
      card, and the dashboard / copy-from-card show setup instructions. */
-  APP_KEY: '',
+  APP_KEY: 'c89327f7819118b25317794fb816c9fe',
   APP_NAME: 'TF-Maintain',
   ROLES: ['Engineer', 'Technician'],
   MAX_BYTES: 3900,     // card pluginData budget (Trello hard cap ~4096): refuse, never truncate

@@ -2,7 +2,7 @@
 
 Maintenance-routine Power-Up for the UC Davis Tech Foundry (Davis/GBSF + Aggie Square, Sacramento). Staff and student workers check off recurring maintenance on Trello cards: machine cards (HAAS UMC 500, Kern lasers…), fleet cards (FDM printers, Formlabs SLA), and facility chore cards (sweeping, dusting, stock checks). Sibling of TF-Recharge, TF-Message, TF-Manufacture; same chassis, same visual language.
 
-**Current version: 0.1** — the whole Power-Up is the single file `tf-maintain.html`. There is no build step: edit the file, bump `VERSION`, test, push.
+**Current version: 0.2** — the whole Power-Up is the single file `tf-maintain.html`. There is no build step: edit the file, bump `VERSION`, test, push.
 
 ## Owner shorthand
 
@@ -73,7 +73,7 @@ Template task tuple: `[name, interval, window, 'u'?, readingLabel, owner, schedu
 
 ## REST API (needed for comments, dashboard, copy-from-card)
 
-`CONFIG.APP_KEY` is **empty in v0.1**. Until it's set, everything else works; comments queue on the card (visible count in the editor) and the dashboard/copy show setup text. Setup:
+`CONFIG.APP_KEY` is **set as of v0.2** (key is public by design; the secret is never stored). If it is ever cleared, everything else still works; comments queue on the card (visible count in the editor) and the dashboard/copy show setup text. Setup:
 1. trello.com/power-ups/admin → TF-Maintain → API key → generate; add the GitHub Pages origin as an allowed origin.
 2. Put the key in `CONFIG.APP_KEY`, bump version, ship.
 3. Each member taps "Authorize TF-Maintain" once (editor history section or dashboard).
@@ -93,6 +93,6 @@ Served by GitHub Pages from this repo (`slucero1124/TF-Maintain`): `https://sluc
 
 ## Backlog
 
-- Register the API key (above) so comments, the dashboard and copy-from-card go live.
+- Confirm the allowed origin `https://slucero1124.github.io` is set on the API key page, and that each member has authorized.
 - Flag from the face is only on visible rows (overdue/due/done today); upcoming tasks are flagged from the expanded view.
 - Possible: Trello due date sync, holiday/closure list, "Next: date" quiet badge (both declined for v0.1).
